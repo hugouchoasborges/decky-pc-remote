@@ -25,11 +25,17 @@ Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settin
 Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName $name
 
+# TCP for commands, UDP for discovery (the Deck finds the PC again when its IP changes).
 $rule = "PC Remote Agent ($Port)"
+$ruleUdp = "PC Remote Agent discovery ($Port)"
+$cmds = @()
 if (-not (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue)) {
-    $cmd = "New-NetFirewallRule -DisplayName '$rule' -Direction Inbound -Protocol TCP -LocalPort $Port -Profile Private -Action Allow"
-    Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', $cmd
+    $cmds += "New-NetFirewallRule -DisplayName '$rule' -Direction Inbound -Protocol TCP -LocalPort $Port -Profile Private -Action Allow"
 }
+if (-not (Get-NetFirewallRule -DisplayName $ruleUdp -ErrorAction SilentlyContinue)) {
+    $cmds += "New-NetFirewallRule -DisplayName '$ruleUdp' -Direction Inbound -Protocol UDP -LocalPort $Port -Profile Private -Action Allow"
+}
+if ($cmds) { Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', ($cmds -join '; ') }
 
 $ips = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -in 'Dhcp', 'Manual' -and $_.IPAddress -notlike '169.*' }).IPAddress
 Write-Host "PC Remote agent running on port $Port"

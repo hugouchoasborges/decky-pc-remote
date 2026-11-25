@@ -1,8 +1,14 @@
 import {
   ButtonItem,
   ConfirmModal,
+  DialogBody,
+  DialogButton,
+  DialogFooter,
+  DialogHeader,
   Dropdown,
   Field,
+  Focusable,
+  ModalRoot,
   PanelSection,
   PanelSectionRow,
   Navigation,
@@ -30,43 +36,68 @@ const setVolume = callable<[number], Status>("set_volume");
 
 const EMPTY: Pc = { name: "", host: "", port: 47990, token: "" };
 
-function PcEditor({ initial, onSave, onCancel }: { initial: Pc; onSave: (pc: Pc) => void; onCancel: () => void }) {
-  // One plain string state per field, as Decky plugins that type in the QAM do.
+const discover = callable<[], { name: string; host: string; port: number }[]>("discover");
+
+// The PC form opens as a modal in the main window (like MAKO's text inputs): the on-screen
+// keyboard does not type into text fields inside the Quick Access Menu.
+function PcEditModal({ initial, onSave, closeModal }: { initial: Pc; onSave: (pc: Pc) => void; closeModal?: () => void }) {
   const [name, setName] = useState(initial.name);
   const [host, setHost] = useState(initial.host);
   const [port, setPort] = useState(String(initial.port || 47990));
   const [token, setToken] = useState(initial.token);
+  const [found, setFound] = useState<string>("");
+  const search = async () => {
+    setFound("Procurando…");
+    const list = await discover();
+    if (!list.length) { setFound("Nenhum PC encontrado (o agente está rodando e o firewall liberado?)"); return; }
+    const pick = list.find((d) => d.name.toLowerCase() === name.trim().toLowerCase()) ?? list[0];
+    setName(pick.name); setHost(pick.host); setPort(String(pick.port));
+    setFound(`Encontrado: ${list.map((d) => `${d.name} (${d.host})`).join(", ")}`);
+  };
+  const valid = host.trim() && token.trim();
   return (
-    <>
-      <PanelSectionRow><TextField label="Nome" value={name} onChange={(e) => setName(e?.target?.value ?? "")} /></PanelSectionRow>
-      <PanelSectionRow><TextField label="IP ou nome do PC" value={host} onChange={(e) => setHost(e?.target?.value ?? "")} /></PanelSectionRow>
-      <PanelSectionRow><TextField label="Porta" value={port} onChange={(e) => setPort(e?.target?.value ?? "")} /></PanelSectionRow>
-      <PanelSectionRow><TextField label="Token" value={token} onChange={(e) => setToken(e?.target?.value ?? "")} /></PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!host.trim() || !token.trim()}
-          onClick={() => onSave({ name: name.trim() || host.trim(), host: host.trim(), port: Number(port) || 47990, token: token.trim() })}>Salvar</ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow><ButtonItem layout="below" onClick={onCancel}>Cancelar</ButtonItem></PanelSectionRow>
-    </>
+    <ModalRoot onCancel={closeModal}>
+      <DialogHeader>{initial.host ? "Editar PC" : "Adicionar PC"}</DialogHeader>
+      <DialogBody>
+        <Field label="Nome" childrenLayout="below" childrenContainerWidth="max">
+          <TextField value={name} onChange={(e) => setName(e?.target?.value ?? "")} style={{ width: "100%" }} />
+        </Field>
+        <Field label="IP ou nome do PC" childrenLayout="below" childrenContainerWidth="max">
+          <TextField value={host} onChange={(e) => setHost(e?.target?.value ?? "")} style={{ width: "100%" }} />
+        </Field>
+        <Field label="Porta" childrenLayout="below" childrenContainerWidth="max">
+          <TextField value={port} onChange={(e) => setPort(e?.target?.value ?? "")} style={{ width: "100%" }} />
+        </Field>
+        <Field label="Token" description="Mostrado pelo install.ps1 no PC" childrenLayout="below" childrenContainerWidth="max">
+          <TextField value={token} onChange={(e) => setToken(e?.target?.value ?? "")} style={{ width: "100%" }} />
+        </Field>
+        {found && <Field label={found} />}
+      </DialogBody>
+      <DialogFooter>
+        <Focusable style={{ display: "flex", gap: "8px" }} flow-children="row">
+          <DialogButton onClick={search}>Procurar na rede</DialogButton>
+          <DialogButton onClick={closeModal}>Cancelar</DialogButton>
+          <DialogButton disabled={!valid} onClick={() => {
+            onSave({ name: name.trim() || host.trim(), host: host.trim(), port: Number(port) || 47990, token: token.trim() });
+            closeModal?.();
+          }}>Salvar</DialogButton>
+        </Focusable>
+      </DialogFooter>
+    </ModalRoot>
   );
 }
 
 function Content() {
   const [config, setConfig] = useState<Config>({ pcs: [], selected: 0 });
   const [status, setStatus] = useState<Status>({});
-  const [editing, setEditing] = useState<number | null>(null); // index, or -1 for a new PC
   const volTimer = useRef<number>();
 
   const refresh = async () => setStatus(await getStatus());
   useEffect(() => {
-    getConfig().then((c) => { setConfig(c); if (c.pcs.length) refresh(); else setEditing(-1); });
-  }, []);
-  // Poll only outside the editor: re-rendering while the on-screen keyboard types loses input.
-  useEffect(() => {
-    if (editing !== null) return;
+    getConfig().then((c) => { setConfig(c); if (c.pcs.length) refresh(); });
     const t = window.setInterval(refresh, 3000);
     return () => window.clearInterval(t);
-  }, [editing]);
+  }, []);
 
   const run = async (path: string, done: string) => {
     const r = await command(path);
@@ -84,17 +115,11 @@ function Content() {
     volTimer.current = window.setTimeout(async () => setStatus(await setVolume(v)), 200);
   };
 
-  if (editing !== null) {
-    return (
-      <PanelSection title={editing < 0 ? "Adicionar PC" : "Editar PC"}>
-        <PcEditor
-          initial={editing < 0 ? EMPTY : config.pcs[editing]}
-          onSave={async (pc) => { setConfig(await savePc(editing, pc)); setEditing(null); refresh(); }}
-          onCancel={() => setEditing(null)}
-        />
-      </PanelSection>
-    );
-  }
+  const edit = (index: number) => {
+    Navigation.CloseSideMenus();
+    showModal(<PcEditModal initial={index < 0 ? EMPTY : config.pcs[index]}
+      onSave={async (pc) => { setConfig(await savePc(index, pc)); setStatus({}); refresh(); }} />);
+  };
 
   const pc = config.pcs[config.selected];
   const online = !status.error && status.host !== undefined;
@@ -143,8 +168,8 @@ function Content() {
       </PanelSection>
 
       <PanelSection title="Configurar">
-        <PanelSectionRow><ButtonItem layout="below" disabled={!pc} onClick={() => setEditing(config.selected)}>Editar este PC</ButtonItem></PanelSectionRow>
-        <PanelSectionRow><ButtonItem layout="below" onClick={() => setEditing(-1)}>Adicionar outro PC</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><ButtonItem layout="below" disabled={!pc} onClick={() => edit(config.selected)}>Editar este PC</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><ButtonItem layout="below" onClick={() => edit(-1)}>Adicionar outro PC</ButtonItem></PanelSectionRow>
         {pc && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={() => { Navigation.CloseSideMenus(); showModal(<ConfirmModal strTitle={`Remover ${pc.name}?`} strOKButtonText="Remover" strCancelButtonText="Cancelar"

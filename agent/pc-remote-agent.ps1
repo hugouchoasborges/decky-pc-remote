@@ -101,8 +101,24 @@ function Reply($stream, [int]$code, $obj) {
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, $Port)
 $listener.Start()
-Log "listening on $Port"
+# Discovery: a UDP datagram "PCREMOTE_DISCOVER" on the same port gets {"name","port"} back,
+# so the Deck finds the PC again after DHCP gives it a new IP. Reveals no secret.
+$udp = [Net.Sockets.UdpClient]::new($Port)
+$udp.EnableBroadcast = $true
+Log "listening on $Port (tcp + udp discovery)"
 while ($true) {
+    if ($udp.Available -gt 0) {
+        try {
+            $from = [Net.IPEndPoint]::new([Net.IPAddress]::Any, 0)
+            $msg = [Text.Encoding]::ASCII.GetString($udp.Receive([ref]$from))
+            if ($msg -eq 'PCREMOTE_DISCOVER') {
+                $b = [Text.Encoding]::UTF8.GetBytes((@{ name = $env:COMPUTERNAME; port = $Port } | ConvertTo-Json -Compress))
+                [void]$udp.Send($b, $b.Length, $from)
+            }
+        } catch { Log "udp error: $_" }
+        continue
+    }
+    if (-not $listener.Pending()) { Start-Sleep -Milliseconds 50; continue }
     $client = $listener.AcceptTcpClient()
     try {
         $client.ReceiveTimeout = 5000

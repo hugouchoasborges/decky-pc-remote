@@ -1,6 +1,8 @@
 """PC Remote backend: keeps the list of PCs and relays commands to the PC Remote agent over HTTP."""
 import json
 import os
+import socket
+import time
 import urllib.error
 import urllib.request
 
@@ -27,22 +29,64 @@ def _save(data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
+def _discover(port: int = 47990, wait: float = 1.5) -> list:
+    """Broadcasts PCREMOTE_DISCOVER; every agent on the LAN answers {"name","port"}."""
+    found = {}
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.settimeout(0.3)
+        s.sendto(b"PCREMOTE_DISCOVER", ("255.255.255.255", port))
+        end = time.time() + wait
+        while time.time() < end:
+            try:
+                raw, (ip, _) = s.recvfrom(1024)
+                info = json.loads(raw)
+                found[info["name"]] = {"name": info["name"], "host": ip, "port": int(info.get("port", port))}
+            except socket.timeout:
+                continue
+            except ValueError:
+                continue
+    finally:
+        s.close()
+    return list(found.values())
+
+
+def _call(pc: dict, method: str, path: str) -> dict:
+    url = f"http://{pc['host']}:{int(pc.get('port') or 47990)}{path}"
+    req = urllib.request.Request(url, method=method, headers={"X-Token": pc.get("token", "")})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return json.loads(r.read() or b"{}")
+
+
 def _request(method: str, path: str) -> dict:
     data = _load()
     pcs = data["pcs"]
     if not pcs:
         return {"error": "Nenhum PC configurado"}
-    pc = pcs[min(data["selected"], len(pcs) - 1)]
-    url = f"http://{pc['host']}:{int(pc.get('port') or 47990)}{path}"
-    req = urllib.request.Request(url, method=method, headers={"X-Token": pc.get("token", "")})
+    i = min(data["selected"], len(pcs) - 1)
+    pc = pcs[i]
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return json.loads(r.read() or b"{}")
+        res = _call(pc, method, path)
+        if res.get("host") and pc.get("hostname") != res["host"]:
+            pc["hostname"] = res["host"]  # remembered to find the PC again by name
+            _save(data)
+        return res
     except urllib.error.HTTPError as e:
         return {"error": "Token inválido" if e.code == 401 else f"Erro {e.code}"}
-    except Exception as e:  # offline, timeout, refused
-        decky.logger.info(f"{method} {url}: {e}")
-        return {"error": "PC fora do ar"}
+    except Exception as e:  # offline, timeout, refused: maybe the IP changed (DHCP)
+        decky.logger.info(f"{method} {pc['host']}{path}: {e}")
+    wanted = (pc.get("hostname") or pc.get("name") or "").lower()
+    for d in _discover(int(pc.get("port") or 47990)):
+        if d["name"].lower() == wanted and d["host"] != pc["host"]:
+            decky.logger.info(f"{wanted} moved {pc['host']} -> {d['host']}")
+            pc["host"] = d["host"]
+            _save(data)
+            try:
+                return _call(pc, method, path)
+            except Exception:
+                break
+    return {"error": "PC fora do ar"}
 
 
 class Plugin:
@@ -72,6 +116,9 @@ class Plugin:
         data["selected"] = index
         _save(data)
         return data
+
+    async def discover(self) -> list:
+        return _discover()
 
     async def status(self) -> dict:
         return _request("GET", "/status")
