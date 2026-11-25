@@ -4,6 +4,10 @@ A remote for your Windows PC in the Steam Deck's Quick Access Menu (`…`). Made
 you stream from the PC with Steam Link / Remote Play and want to open Steam, set the volume,
 turn the screen off or put the PC to sleep without walking to the desk.
 
+At a glance it also shows the PC's **live CPU, GPU and RAM use** (each GPU Windows has
+running, so a laptop's MUX switch shows) and lets you **switch the audio output** (speakers,
+headphones, TV) from the Deck.
+
 ## Quick start
 
 **Latest version: [download page](https://github.com/hugouchoasborges/decky-pc-remote/releases/latest)** (the steps below fetch it for you)
@@ -28,7 +32,7 @@ Done: the panel shows your PC as **Online**. To update later, run both steps aga
 (the token stays the same).
 
 <p align="center">
-  <img src="docs/screenshots/panel.png" width="360" alt="The whole PC Remote panel on the Steam Deck: status card (LEGION-5I online, address, Steam open, volume muted, on for 1d 22h) with meters for the i7-12700H, RAM, Iris Xe and RTX 3060; Games on the PC with Spider-Man, Zelda (non-Steam, artwork set on the Deck), Clair Obscur and The Last of Us; Close Steam; volume slider, Unmute and the Output picker; Turn off the screen; Sleep, Restart and Shut down; and Edit, Add, Remove for PCs">
+  <img src="docs/screenshots/panel.png?v=1.1.0" width="360" alt="The whole PC Remote panel on the Steam Deck: status card (LEGION-5I online, address, Steam open, volume muted, on for 1d 22h) with meters for the i7-12700H, RAM, Iris Xe and RTX 3060; Games on the PC with Spider-Man, Zelda (non-Steam, artwork set on the Deck), Clair Obscur and The Last of Us; Close Steam; volume slider, Unmute and the Output picker; Turn off the screen; Sleep, Restart and Shut down; and Edit, Add, Remove for PCs">
 </p>
 
 ## What it does
