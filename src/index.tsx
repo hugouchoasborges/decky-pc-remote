@@ -5,6 +5,7 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
+  Navigation,
   SliderField,
   TextField,
   ToggleField,
@@ -73,8 +74,9 @@ function Content() {
     else toaster.toast({ title: "PC Remote", body: done });
     setTimeout(refresh, 1500);
   };
-  const confirm = (title: string, path: string, done: string) =>
-    showModal(<ConfirmModal strTitle={title} strDescription="Tem certeza?" strOKButtonText="Sim" strCancelButtonText="Não" onOK={() => run(path, done)} />);
+  // The modal opens in the main window: close the Quick Access Menu first so it is not hidden behind it.
+  const confirm = (title: string, path: string, done: string) => { Navigation.CloseSideMenus();
+    showModal(<ConfirmModal strTitle={title} strDescription="Tem certeza?" strOKButtonText="Sim" strCancelButtonText="Não" onOK={() => run(path, done)} />); };
 
   const onVolume = (v: number) => {
     setStatus((s) => ({ ...s, volume: v }));
@@ -130,8 +132,11 @@ function Content() {
         </PanelSectionRow>
       </PanelSection>
 
-      <PanelSection title="Energia">
+      <PanelSection title="Tela">
         <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => run("/screen/off", "Tela desligada")}>Desligar só a tela</ButtonItem></PanelSectionRow>
+      </PanelSection>
+
+      <PanelSection title="Energia (pede confirmação)">
         <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => confirm("Suspender o PC?", "/power/suspend", "Suspendendo")}>Suspender</ButtonItem></PanelSectionRow>
         <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => confirm("Reiniciar o PC?", "/power/restart", "Reiniciando")}>Reiniciar</ButtonItem></PanelSectionRow>
         <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => confirm("Desligar o PC?", "/power/shutdown", "Desligando")}>Desligar</ButtonItem></PanelSectionRow>
@@ -142,8 +147,8 @@ function Content() {
         <PanelSectionRow><ButtonItem layout="below" onClick={() => setEditing(-1)}>Adicionar outro PC</ButtonItem></PanelSectionRow>
         {pc && (
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => showModal(<ConfirmModal strTitle={`Remover ${pc.name}?`} strOKButtonText="Remover" strCancelButtonText="Cancelar"
-              onOK={async () => { setConfig(await removePc(config.selected)); setStatus({}); refresh(); }} />)}>Remover este PC</ButtonItem>
+            <ButtonItem layout="below" onClick={() => { Navigation.CloseSideMenus(); showModal(<ConfirmModal strTitle={`Remover ${pc.name}?`} strOKButtonText="Remover" strCancelButtonText="Cancelar"
+              onOK={async () => { setConfig(await removePc(config.selected)); setStatus({}); refresh(); }} />); }}>Remover este PC</ButtonItem>
           </PanelSectionRow>
         )}
       </PanelSection>
