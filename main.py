@@ -122,6 +122,9 @@ class Plugin:
     async def discover(self) -> list:
         return _discover()
 
+    async def games(self) -> dict:
+        return _request("GET", "/games")
+
     async def status(self) -> dict:
         return _request("GET", "/status")
 

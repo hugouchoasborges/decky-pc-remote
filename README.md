@@ -15,14 +15,17 @@ turn the screen off or put the PC to sleep without walking to the desk.
 | Section | Controls |
 |---|---|
 | **Status** | Online / Offline / Connecting at a glance, with the PC's address, whether Steam is open, and the volume |
+| **Games on the PC** | The Steam games installed on the PC, last played first, with a *Playing* badge on the running one. Collapsed by default; pressing a game opens its page in the Deck's library, where Steam offers **Stream** |
 | **Steam** | Open Steam, or close it when it is running |
 | **Volume** | A slider for the PC's speakers and a Mute / Unmute button |
 | **Screen** | Turn the PC's screen off (moving the mouse or a key wakes it) |
 | **Power** | Sleep, Restart, Shut down, each asking to confirm first |
 | **PCs** | Edit, add or remove PCs, and switch between them when you have more than one |
 
-- Each section header collapses it; a collapsed section shows a summary (for example `72%` or
-  `Open`), and the Deck remembers which sections you keep closed.
+- Only the games list collapses (its header shows how many games are installed); the Deck
+  remembers whether you keep it open.
+- The games list is read from the PC's Steam library files, so it works with Steam closed;
+  when Steam is closed the list offers to open it, since streaming needs it running.
 - Every action has an icon and a colour family: blue for Steam, teal for sound, violet for
   the screen, amber for sleep and restart, red for shut down.
 - Buttons show a spinner while their command runs; failures appear as a toast.
@@ -81,6 +84,7 @@ Every HTTP request needs the header `X-Token: <token>`.
 | Request | Effect |
 |---|---|
 | `GET /status` | `{"host","steam","volume","muted"}` |
+| `GET /games` | `{"running","games":[{"appid","name","lastPlayed"}]}`: fully installed Steam games, tools and runtimes left out |
 | `POST /steam/open`, `POST /steam/close` | Opens Steam, or closes it with `steam.exe -shutdown` |
 | `POST /screen/off` | Turns the displays off |
 | `POST /power/suspend`, `/power/restart`, `/power/shutdown` | Power actions, 1.5 s after the reply |

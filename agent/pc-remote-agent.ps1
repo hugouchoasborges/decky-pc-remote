@@ -3,6 +3,7 @@
 # on the desktop and change the speaker volume. Every request needs the X-Token header.
 #
 #   GET  /status                 -> {"host","steam","volume","muted"}
+#   GET  /games                  -> {"running", "games":[{"appid","name","lastPlayed"}]}
 #   POST /steam/open | /steam/close
 #   POST /screen/off             -> turns the displays off only
 #   POST /power/suspend | /power/shutdown | /power/restart
@@ -63,6 +64,30 @@ function SteamExe {
     return "${env:ProgramFiles(x86)}\Steam\steam.exe"
 }
 function SteamRunning { [bool](Get-Process steam -ErrorAction SilentlyContinue) }
+# Installed Steam games, read from the library files (works with Steam closed).
+# Fully installed only (StateFlags 4), tools and runtimes left out, last played first.
+function Games {
+    $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).SteamPath
+    if (-not $steam) { return @() }
+    $vdf = Join-Path $steam 'steamapps\libraryfolders.vdf'
+    $libs = @($steam)
+    if (Test-Path $vdf) { $libs += [regex]::Matches((Get-Content $vdf -Raw -Encoding UTF8), '"path"\s+"([^"]+)"') | ForEach-Object { $_.Groups[1].Value -replace '\\\\', '\' } }
+    $tools = '^(Steamworks Common Redistributables|Proton|Steam Linux Runtime|SteamVR|Steam Audio)'
+    $seen = @{}
+    $games = foreach ($lib in ($libs | Select-Object -Unique)) {
+        foreach ($f in Get-ChildItem (Join-Path $lib 'steamapps') -Filter 'appmanifest_*.acf' -ErrorAction SilentlyContinue) {
+            $t = Get-Content $f.FullName -Raw -Encoding UTF8
+            $get = { param($k) $m = [regex]::Match($t, "`"$k`"\s+`"([^`"]*)`""); if ($m.Success) { $m.Groups[1].Value } }
+            $id = [int](& $get 'appid'); $name = & $get 'name'
+            if (-not $id -or $seen[$id] -or $name -match $tools -or [int](& $get 'StateFlags') -ne 4) { continue }
+            $seen[$id] = $true
+            [pscustomobject]@{ appid = $id; name = $name; lastPlayed = [int64](& $get 'LastPlayed') }
+        }
+    }
+    $running = (Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).RunningAppID
+    @{ running = [int]$running; games = @($games | Sort-Object @{ e = 'lastPlayed'; Descending = $true }, name) }
+}
+
 function Status {
     @{ host = $env:COMPUTERNAME; steam = (SteamRunning); volume = [PcAudio]::Get(); muted = [PcAudio]::Muted() }
 }
@@ -75,6 +100,7 @@ function Later([scriptblock]$b) {
 function Handle($method, $path, $query) {
     switch ("$method $path") {
         'GET /status'        { return Status }
+        'GET /games'         { return Games }
         'POST /steam/open'   { if (-not (SteamRunning)) { Start-Process (SteamExe) }; return @{ ok = $true } }
         'POST /steam/close'  { if (SteamRunning) { Start-Process (SteamExe) -ArgumentList '-shutdown' }; return @{ ok = $true } }
         'POST /screen/off'     { Later { [PcPower]::ScreenOff() }; return @{ ok = $true } }
@@ -92,7 +118,7 @@ function Handle($method, $path, $query) {
 }
 
 function Reply($stream, [int]$code, $obj) {
-    $body = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Compress))
+    $body = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Compress -Depth 5))
     $reason = @{ 200 = 'OK'; 401 = 'Unauthorized'; 404 = 'Not Found'; 500 = 'Error' }[$code]
     $head = "HTTP/1.1 $code $reason`r`nContent-Type: application/json`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n"
     $h = [Text.Encoding]::ASCII.GetBytes($head)

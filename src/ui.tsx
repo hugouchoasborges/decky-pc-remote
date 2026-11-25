@@ -3,7 +3,7 @@
 // - Actions are tiles: an icon with a short label, tinted by action family.
 // - Colour carries state and action family only; every state also has an icon and words.
 import { DialogButton, Focusable, PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
-import { CSSProperties, ReactNode, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import { IconType } from "react-icons";
 import { FiAlertCircle, FiCheckCircle, FiChevronDown, FiInfo, FiXCircle } from "react-icons/fi";
 
@@ -44,6 +44,13 @@ const css = `
 .pcr-tile.pcr-wide.DialogButton { flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 50px !important;
   padding: 8px 14px !important; font-size: 15px !important; }
 
+.pcr-game.DialogButton { display: flex !important; align-items: center; gap: 10px; width: 100%; min-width: 0 !important;
+  min-height: 0 !important; padding: 5px 8px 5px 5px !important; margin: 0 0 4px !important; border-radius: 6px;
+  background: rgba(255,255,255,0.04) !important; color: ${ink} !important; text-align: left;
+  font-size: 13px !important; font-weight: 600; transition: background 150ms ease-out; }
+.pcr-game.DialogButton.gpfocus, .pcr-game.DialogButton:hover { background: ${tone.steam}33 !important; }
+.pcr-game img { width: 64px; height: 30px; flex: 0 0 64px; object-fit: cover; border-radius: 3px; background: #1b2838; }
+.pcr-game .pcr-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcr-row { display: grid; gap: 8px; width: 100%; padding: 4px 0; }
 @media (prefers-reduced-motion: reduce) {
   .pcr-head .pcr-chev, .pcr-tile.DialogButton { transition: none; }
@@ -135,11 +142,28 @@ const readCollapsed = (key: string, initial: boolean) => {
   } catch { return initial; }
 };
 
+/** A plain section header: icon badge, title and an optional note on the right. */
+export function Section({ title, icon, t, note, children }: { title: string; icon: IconType; t: Tone; note?: ReactNode; children: ReactNode }) {
+  return (
+    <PanelSection>
+      <PanelSectionRow>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", color: ink }}>
+          <IconBadge icon={icon} t={t} />
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{title}</span>
+          {note !== undefined && <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: inkMuted }}>{note}</span>}
+        </div>
+      </PanelSectionRow>
+      {children}
+    </PanelSection>
+  );
+}
+
 /** A section whose header is its collapse toggle; the summary shows what is hidden. */
-export function Section({ id, title, icon, t, summary, initiallyCollapsed = false, children }: {
-  id: string; title: string; icon: IconType; t: Tone; summary?: ReactNode; initiallyCollapsed?: boolean; children: ReactNode;
+export function CollapsibleSection({ id, title, icon, t, summary, initiallyCollapsed = false, onExpand, children }: {
+  id: string; title: string; icon: IconType; t: Tone; summary?: ReactNode; initiallyCollapsed?: boolean; onExpand?: () => void; children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(id, initiallyCollapsed));
+  useEffect(() => { if (!collapsed) onExpand?.(); }, [collapsed]);
   const toggle = () => {
     const next = !collapsed;
     setCollapsed(next);
@@ -158,6 +182,28 @@ export function Section({ id, title, icon, t, summary, initiallyCollapsed = fals
       </PanelSectionRow>
       {!collapsed && children}
     </PanelSection>
+  );
+}
+
+// ---------------------------------------------------------------- games
+
+/** One installed game: its library capsule, its name, and a "Playing" badge while it runs. */
+export function GameRow({ appid, name, playing, onClick }: { appid: number; name: string; playing: boolean; onClick: () => void }) {
+  const [img, setImg] = useState(true);
+  return (
+    <PanelSectionRow>
+      <DialogButton className="pcr-game" onClick={onClick}>
+        {img
+          ? <img src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/capsule_184x69.jpg`} alt="" onError={() => setImg(false)} />
+          : <span style={{ width: 64, height: 30, flex: "0 0 64px", borderRadius: 3, background: "#1b2838" }} />}
+        <span className="pcr-name">{name}</span>
+        {playing && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: tone.ok, padding: "2px 6px", borderRadius: 4, background: alpha(tone.ok, 0.16) }}>
+            Playing
+          </span>
+        )}
+      </DialogButton>
+    </PanelSectionRow>
   );
 }
 

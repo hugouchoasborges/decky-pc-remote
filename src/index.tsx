@@ -20,8 +20,8 @@ import { callable, definePlugin, toaster } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { FaDesktop } from "react-icons/fa";
 import { FaSteam } from "react-icons/fa";
-import { FiEdit2, FiEyeOff, FiKey, FiLogOut, FiMonitor, FiMoon, FiPlus, FiPower, FiRotateCw, FiSettings, FiTrash2, FiVolume2, FiVolumeX, FiWifi } from "react-icons/fi";
-import { CardState, Notice, PanelStyles, Section, StatusCard, TileRow, WideTile } from "./ui";
+import { FiEdit2, FiEyeOff, FiKey, FiLogOut, FiMonitor, FiMoon, FiPlay, FiPlus, FiPower, FiRotateCw, FiSettings, FiTrash2, FiVolume2, FiVolumeX, FiWifi } from "react-icons/fi";
+import { CardState, CollapsibleSection, GameRow, Notice, PanelStyles, Section, StatusCard, TileRow, WideTile } from "./ui";
 
 type Pc = { name: string; host: string; port: number; token: string };
 type Config = { pcs: Pc[]; selected: number };
@@ -34,6 +34,12 @@ const selectPc = callable<[number], Config>("select_pc");
 const getStatus = callable<[], Status>("status");
 const command = callable<[string], Status & { ok?: boolean }>("command");
 const setVolume = callable<[number], Status>("set_volume");
+type Game = { appid: number; name: string; lastPlayed: number };
+type Games = { games: Game[]; running: number; error?: string };
+const getGames = callable<[], Games>("games");
+
+// Opens the game's own page in the Deck's library, where Steam offers Stream / Play.
+const openGame = (appid: number) => { Navigation.CloseSideMenus(); Navigation.Navigate(`/library/app/${appid}`); };
 
 const EMPTY: Pc = { name: "", host: "", port: 47990, token: "" };
 
@@ -94,6 +100,11 @@ function Content() {
   const volTimer = useRef<number>();
 
   const [notice, setNotice] = useState<string>("");
+  const [games, setGames] = useState<Games | null>(null);
+  const loadGames = async () => {
+    const r = await getGames();
+    setGames(r.error ? { games: [], running: 0, error: r.error } : r);
+  };
   const apply = (r: Status) => {
     setStatus(r);
     if (r.moved_to) setNotice(`The PC's IP changed: found again at ${r.moved_to}`);
@@ -171,13 +182,29 @@ function Content() {
         {notice && <Notice kind="info">{notice}</Notice>}
       </PanelSection>
 
-      <Section id="steam" title="Steam" icon={FaSteam} t="steam" summary={online ? (status.steam ? "Open" : "Closed") : undefined}>
+      <CollapsibleSection id="games" title="Games on the PC" icon={FiPlay} t="ok" initiallyCollapsed onExpand={loadGames}
+        summary={games && !games.error ? `${games.games.length} installed` : undefined}>
+        {!games && <Notice kind="info">Loading the PC's library…</Notice>}
+        {games?.error && <Notice kind="error">{games.error}</Notice>}
+        {games && !games.error && games.games.length === 0 && <Notice kind="info">No installed Steam games found on this PC.</Notice>}
+        {games && !games.error && games.games.length > 0 && online && !status.steam && (
+          <>
+            <Notice kind="info">Steam is closed on the PC: open it to stream these games.</Notice>
+            <WideTile icon={FaSteam} label="Open Steam" t="steam" onClick={() => run("/steam/open", "Opening Steam")} />
+          </>
+        )}
+        {games?.games.map((g) => (
+          <GameRow key={g.appid} appid={g.appid} name={g.name} playing={g.appid === games.running} onClick={() => openGame(g.appid)} />
+        ))}
+      </CollapsibleSection>
+
+      <Section title="Steam" icon={FaSteam} t="steam">
         {status.steam
           ? <WideTile icon={FiLogOut} label="Close Steam" t="steam" disabled={!online} onClick={() => run("/steam/close", "Closing Steam")} />
           : <WideTile icon={FaSteam} label="Open Steam" t="steam" disabled={!online} onClick={() => run("/steam/open", "Opening Steam")} />}
       </Section>
 
-      <Section id="volume" title="Volume" icon={status.muted ? FiVolumeX : FiVolume2} t="sound" summary={online ? volumeText : undefined}>
+      <Section title="Volume" icon={status.muted ? FiVolumeX : FiVolume2} t="sound">
         <PanelSectionRow>
           <SliderField label="Volume" value={status.volume ?? 0} min={0} max={100} step={2} showValue disabled={!online} onChange={onVolume} />
         </PanelSectionRow>
@@ -185,11 +212,11 @@ function Content() {
           onClick={async () => apply(await command("/mute"))} />
       </Section>
 
-      <Section id="screen" title="Screen" icon={FiMonitor} t="screen">
+      <Section title="Screen" icon={FiMonitor} t="screen">
         <WideTile icon={FiEyeOff} label="Turn off the screen" t="screen" disabled={!online} onClick={() => run("/screen/off", "Screen off")} />
       </Section>
 
-      <Section id="power" title="Power" icon={FiPower} t="danger" summary="Asks to confirm">
+      <Section title="Power" icon={FiPower} t="danger" note="Asks to confirm">
         <TileRow tiles={[
           { icon: FiMoon, label: "Sleep", t: "caution", disabled: !online, onClick: () => confirm("Put the PC to sleep?", "/power/suspend", "Going to sleep") },
           { icon: FiRotateCw, label: "Restart", t: "caution", disabled: !online, onClick: () => confirm("Restart the PC?", "/power/restart", "Restarting") },
@@ -197,7 +224,7 @@ function Content() {
         ]} />
       </Section>
 
-      <Section id="config" title="PCs" icon={FiSettings} t="neutral" summary={`${config.pcs.length} saved`} initiallyCollapsed>
+      <Section title="PCs" icon={FiSettings} t="neutral" note={`${config.pcs.length} saved`}>
         <TileRow tiles={[
           { icon: FiEdit2, label: "Edit", t: "neutral", onClick: () => edit(config.selected) },
           { icon: FiPlus, label: "Add", t: "steam", onClick: () => edit(-1) },
