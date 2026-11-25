@@ -13,6 +13,7 @@ import {
   Navigation,
   SliderField,
   TextField,
+  ToggleField,
   showModal,
   staticClasses,
 } from "@decky/ui";
@@ -23,7 +24,7 @@ import { FaSteam } from "react-icons/fa";
 import { FiEdit2, FiEyeOff, FiKey, FiLogOut, FiMonitor, FiMoon, FiPlay, FiPlus, FiPower, FiRotateCw, FiSettings, FiTrash2, FiVolume2, FiVolumeX, FiWifi } from "react-icons/fi";
 import { CardState, CollapsibleSection, GameRow, Notice, PanelStyles, Section, StatusCard, TileRow, WideTile } from "./ui";
 
-type Pc = { name: string; host: string; port: number; token: string };
+type Pc = { name: string; host: string; port: number; token: string; hidden?: number[] }; // hidden: app ids left off the panel
 type Config = { pcs: Pc[]; selected: number };
 type Status = { host?: string; steam?: boolean; volume?: number; muted?: boolean; error?: string; moved_to?: string };
 
@@ -47,7 +48,8 @@ const discover = callable<[], { name: string; host: string; port: number }[]>("d
 
 // The PC form opens as a modal in the main window (like MAKO's text inputs): the on-screen
 // keyboard does not type into text fields inside the Quick Access Menu.
-function PcEditModal({ initial, onSave, closeModal }: { initial: Pc; onSave: (pc: Pc) => void; closeModal?: () => void }) {
+function PcEditModal({ initial, games, onSave, closeModal }: { initial: Pc; games?: Game[]; onSave: (pc: Pc) => void; closeModal?: () => void }) {
+  const [hidden, setHidden] = useState<number[]>(initial.hidden ?? []);
   const [name, setName] = useState(initial.name);
   const [host, setHost] = useState(initial.host);
   const [port, setPort] = useState(String(initial.port || 47990));
@@ -79,13 +81,23 @@ function PcEditModal({ initial, onSave, closeModal }: { initial: Pc; onSave: (pc
           <TextField value={token} onChange={(e) => setToken(e?.target?.value ?? "")} style={{ width: "100%" }} />
         </Field>
         {found && <Field label={found} />}
+        {games && games.length > 0 && (
+          <>
+            <Field label="Shown on the panel" description="Turn off the games and apps you don't want in Games on the PC." />
+            {games.map((g) => (
+              <ToggleField key={g.appid} label={g.name} description={g.nonSteam ? "Non-Steam" : undefined}
+                checked={!hidden.includes(g.appid)}
+                onChange={(on) => setHidden((h) => on ? h.filter((id) => id !== g.appid) : [...h, g.appid])} />
+            ))}
+          </>
+        )}
       </DialogBody>
       <DialogFooter>
         <Focusable style={{ display: "flex", gap: "8px" }} flow-children="row">
           <DialogButton onClick={search}>Search the network</DialogButton>
           <DialogButton onClick={closeModal}>Cancel</DialogButton>
           <DialogButton disabled={!valid} onClick={() => {
-            onSave({ name: name.trim() || host.trim(), host: host.trim(), port: Number(port) || 47990, token: token.trim() });
+            onSave({ name: name.trim() || host.trim(), host: host.trim(), port: Number(port) || 47990, token: token.trim(), hidden });
             closeModal?.();
           }}>Save</DialogButton>
         </Focusable>
@@ -134,9 +146,15 @@ function Content() {
     volTimer.current = window.setTimeout(async () => apply(await setVolume(v)), 200);
   };
 
-  const edit = (index: number) => {
+  const edit = async (index: number) => {
+    // The games list only exists for the PC being shown, so only its form offers to hide games.
+    let list: Game[] | undefined;
+    if (index === config.selected && index >= 0) {
+      const g = games && !games.error ? games : await getGames();
+      if (!g.error) { setGames(g); list = g.games; }
+    }
     Navigation.CloseSideMenus();
-    showModal(<PcEditModal initial={index < 0 ? EMPTY : config.pcs[index]}
+    showModal(<PcEditModal initial={index < 0 ? EMPTY : config.pcs[index]} games={list}
       onSave={async (pc) => { setConfig(await savePc(index, pc)); setStatus({}); refresh(); }} />);
   };
 
@@ -155,6 +173,9 @@ function Content() {
     );
   }
 
+  const hiddenIds = pc.hidden ?? [];
+  const shown = games && !games.error ? games.games.filter((g) => !hiddenIds.includes(g.appid)) : [];
+  const hiddenCount = games && !games.error ? games.games.length - shown.length : 0;
   const volumeText = online ? (status.muted ? "Muted" : `${status.volume}%`) : "—";
   return (
     <>
@@ -183,18 +204,20 @@ function Content() {
       </PanelSection>
 
       <CollapsibleSection id="games" title="Games on the PC" icon={FiPlay} t="ok" initiallyCollapsed onExpand={loadGames}
-        summary={games && !games.error ? `${games.games.length} installed` : undefined}>
+        summary={games && !games.error ? `${shown.length} shown${hiddenCount ? `, ${hiddenCount} hidden` : ""}` : undefined}>
         {!games && <Notice kind="info">Loading the PC's library…</Notice>}
         {games?.error && <Notice kind="error">{games.error}</Notice>}
-        {games && !games.error && games.games.length === 0 && <Notice kind="info">No installed Steam games found on this PC.</Notice>}
+        {games && !games.error && shown.length === 0 && (
+          <Notice kind="info">{hiddenCount ? "Every game is hidden: show some again in PCs → Edit." : "No installed games found on this PC."}</Notice>
+        )}
         {games && !games.error && games.games.length > 0 && online && !status.steam && (
           <>
             <Notice kind="info">Steam is closed on the PC: open it to stream these games.</Notice>
             <WideTile icon={FaSteam} label="Open Steam" t="steam" onClick={() => run("/steam/open", "Opening Steam")} />
           </>
         )}
-        {games?.games.map((g) => (
-          <GameRow key={g.appid} appid={g.appid} name={g.name} nonSteam={g.nonSteam} playing={g.appid === games.running}
+        {shown.map((g) => (
+          <GameRow key={g.appid} appid={g.appid} name={g.name} nonSteam={g.nonSteam} playing={g.appid === games!.running}
             onClick={() => g.nonSteam && !status.steam
               // The Deck only knows the PC's non-Steam games while Steam runs there.
               ? toaster.toast({ title: "PC Remote", body: "Open Steam on the PC first: non-Steam games show up on the Deck only while it runs." })

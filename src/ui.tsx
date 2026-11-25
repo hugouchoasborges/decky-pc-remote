@@ -189,13 +189,19 @@ export function CollapsibleSection({ id, title, icon, t, summary, initiallyColla
 
 /** One installed game: its library capsule, its name, and a "Playing" badge while it runs. */
 export function GameRow({ appid, name, playing, nonSteam, onClick }: { appid: number; name: string; playing: boolean; nonSteam?: boolean; onClick: () => void }) {
-  // Non-Steam shortcuts have no store capsule: a lettered tile stands in.
-  const [img, setImg] = useState(!nonSteam);
+  // Artwork in order: the banner set on this Deck (Steam serves it as a custom image), the store
+  // capsule (Steam games only), then a lettered tile.
+  const sources = [
+    `https://steamloopback.host/customimages/${appid}.png`,
+    ...(nonSteam ? [] : [`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/capsule_184x69.jpg`]),
+  ];
+  const [src, setSrc] = useState(0);
+  const img = src < sources.length;
   return (
     <PanelSectionRow>
       <DialogButton className="pcr-game" onClick={onClick}>
         {img
-          ? <img src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/capsule_184x69.jpg`} alt="" onError={() => setImg(false)} />
+          ? <img src={sources[src]} alt="" onError={() => setSrc((i) => i + 1)} />
           : <span style={{ width: 64, height: 30, flex: "0 0 64px", borderRadius: 3, display: "grid", placeItems: "center",
               background: alpha(tone.neutral, 0.22), color: ink, fontWeight: 800, fontSize: 15 }}>{name.trim().replace(/^(the|a|an)\s+/i, "").charAt(0).toUpperCase()}</span>}
         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>

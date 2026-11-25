@@ -5,7 +5,7 @@ you stream from the PC with Steam Link / Remote Play and want to open Steam, set
 turn the screen off or put the PC to sleep without walking to the desk.
 
 <p>
-  <img src="docs/screenshots/games-on-the-pc.png" width="300" alt="Games on the PC expanded: Steam games with their capsules and non-Steam shortcuts with a lettered tile and a Non-Steam label">
+  <img src="docs/screenshots/games-on-the-pc.png" width="300" alt="Games on the PC expanded: Steam games with their capsules and a non-Steam game with the artwork set on the Deck and a Non-Steam label">
   <img src="docs/screenshots/status-and-steam.png" width="300" alt="PC Remote: status card with the PC online, its address, Steam and volume, then the Steam section with Open Steam">
   <img src="docs/screenshots/volume-screen-power.png" width="300" alt="Volume slider and Unmute, Turn off the screen, and the Power row with Sleep, Restart and Shut down">
   <img src="docs/screenshots/power-and-pcs.png" width="300" alt="Power row with Sleep focused, and the PCs section with Edit, Add and Remove">
@@ -21,12 +21,16 @@ turn the screen off or put the PC to sleep without walking to the desk.
 | **Volume** | A slider for the PC's speakers and a Mute / Unmute button |
 | **Screen** | Turn the PC's screen off (moving the mouse or a key wakes it) |
 | **Power** | Sleep, Restart, Shut down, each asking to confirm first |
-| **PCs** | Edit, add or remove PCs, and switch between them when you have more than one |
+| **PCs** | Edit, add or remove PCs, switch between them when you have more than one, and choose which games each PC shows |
 
 - Only the games list collapses (its header shows how many games are installed); the Deck
   remembers whether you keep it open.
 - The games list is read from the PC's Steam library files, so it works with Steam closed;
   when Steam is closed the list offers to open it, since streaming needs it running.
+- **PCs → Edit** lists the PC's games with a switch each: turn one off to hide it from the
+  panel (saved per PC on the Deck).
+- Rows use the artwork you set on the Deck for that game when there is one (Steam serves it as
+  a custom image), then the store capsule, then a lettered tile.
 - Non-Steam games come from the PC's `shortcuts.vdf`; the Deck knows them (same app id) only
   while Steam runs on the PC, so they open once Steam is up there.
 - On a game the Deck could also install, Steam's main button reads **Install**: the arrow next
