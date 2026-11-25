@@ -30,16 +30,20 @@ const setVolume = callable<[number], Status>("set_volume");
 const EMPTY: Pc = { name: "", host: "", port: 47990, token: "" };
 
 function PcEditor({ initial, onSave, onCancel }: { initial: Pc; onSave: (pc: Pc) => void; onCancel: () => void }) {
-  const [pc, setPc] = useState<Pc>(initial);
-  const set = (k: keyof Pc) => (e: any) => setPc({ ...pc, [k]: k === "port" ? Number(e.target.value) || 47990 : e.target.value });
+  // One plain string state per field, as Decky plugins that type in the QAM do.
+  const [name, setName] = useState(initial.name);
+  const [host, setHost] = useState(initial.host);
+  const [port, setPort] = useState(String(initial.port || 47990));
+  const [token, setToken] = useState(initial.token);
   return (
     <>
-      <PanelSectionRow><TextField label="Nome" value={pc.name} onChange={set("name")} /></PanelSectionRow>
-      <PanelSectionRow><TextField label="IP ou nome do PC" value={pc.host} onChange={set("host")} /></PanelSectionRow>
-      <PanelSectionRow><TextField label="Porta" value={String(pc.port)} onChange={set("port")} /></PanelSectionRow>
-      <PanelSectionRow><TextField label="Token" value={pc.token} onChange={set("token")} /></PanelSectionRow>
+      <PanelSectionRow><TextField label="Nome" value={name} onChange={(e) => setName(e?.target?.value ?? "")} /></PanelSectionRow>
+      <PanelSectionRow><TextField label="IP ou nome do PC" value={host} onChange={(e) => setHost(e?.target?.value ?? "")} /></PanelSectionRow>
+      <PanelSectionRow><TextField label="Porta" value={port} onChange={(e) => setPort(e?.target?.value ?? "")} /></PanelSectionRow>
+      <PanelSectionRow><TextField label="Token" value={token} onChange={(e) => setToken(e?.target?.value ?? "")} /></PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!pc.host || !pc.token} onClick={() => onSave({ ...pc, name: pc.name || pc.host })}>Salvar</ButtonItem>
+        <ButtonItem layout="below" disabled={!host.trim() || !token.trim()}
+          onClick={() => onSave({ name: name.trim() || host.trim(), host: host.trim(), port: Number(port) || 47990, token: token.trim() })}>Salvar</ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow><ButtonItem layout="below" onClick={onCancel}>Cancelar</ButtonItem></PanelSectionRow>
     </>
@@ -55,9 +59,13 @@ function Content() {
   const refresh = async () => setStatus(await getStatus());
   useEffect(() => {
     getConfig().then((c) => { setConfig(c); if (c.pcs.length) refresh(); else setEditing(-1); });
+  }, []);
+  // Poll only outside the editor: re-rendering while the on-screen keyboard types loses input.
+  useEffect(() => {
+    if (editing !== null) return;
     const t = window.setInterval(refresh, 3000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [editing]);
 
   const run = async (path: string, done: string) => {
     const r = await command(path);
