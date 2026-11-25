@@ -4,11 +4,8 @@ A remote for your Windows PC in the Steam Deck's Quick Access Menu (`…`). Made
 you stream from the PC with Steam Link / Remote Play and want to open Steam, set the volume,
 turn the screen off or put the PC to sleep without walking to the desk.
 
-<p>
-  <img src="docs/screenshots/games-on-the-pc.png" width="300" alt="Games on the PC expanded: Steam games with their capsules and a non-Steam game with the artwork set on the Deck and a Non-Steam label">
-  <img src="docs/screenshots/status-and-steam.png" width="300" alt="PC Remote: status card with the PC online, its address, Steam and volume, then the Steam section with Open Steam">
-  <img src="docs/screenshots/volume-screen-power.png" width="300" alt="Volume slider and Unmute, Turn off the screen, and the Power row with Sleep, Restart and Shut down">
-  <img src="docs/screenshots/power-and-pcs.png" width="300" alt="Power row with Sleep focused, and the PCs section with Edit, Add and Remove">
+<p align="center">
+  <img src="docs/screenshots/panel.png" width="360" alt="The whole PC Remote panel on the Steam Deck: status card (LEGION-5I online, address, Steam open, volume muted); Games on the PC with Zelda (non-Steam, artwork set on the Deck), Spider-Man, Clair Obscur, The Last of Us and Rytmik; Close Steam; volume slider and Unmute; Turn off the screen; Sleep, Restart and Shut down; and Edit, Add, Remove for PCs">
 </p>
 
 ## What it does
