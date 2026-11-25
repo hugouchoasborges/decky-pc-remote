@@ -1,0 +1,31 @@
+# Push a tag like v1.0.0: builds the plugin and publishes a release with
+# decky-pc-remote.zip (for the Deck) and PCRemote-Setup.ps1 (for Windows).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Use the tag as the plugin version
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+      - run: npm run build
+      - run: python3 scripts/package.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/decky-pc-remote.zip
+            release/PCRemote-Setup.ps1
+          generate_release_notes: true

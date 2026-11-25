@@ -4,6 +4,29 @@ A remote for your Windows PC in the Steam Deck's Quick Access Menu (`…`). Made
 you stream from the PC with Steam Link / Remote Play and want to open Steam, set the volume,
 turn the screen off or put the PC to sleep without walking to the desk.
 
+## Quick start
+
+**Latest version: [download page](https://github.com/hugouchoasborges/decky-pc-remote/releases/latest)** (the steps below fetch it for you)
+
+**1. On the Windows PC.** Open PowerShell and paste:
+
+```powershell
+$f = "$env:TEMP\PCRemote-Setup.ps1"; iwr https://github.com/hugouchoasborges/decky-pc-remote/releases/latest/download/PCRemote-Setup.ps1 -OutFile $f -UseBasicParsing; powershell -ExecutionPolicy Bypass -File $f
+```
+
+Click **Yes** when Windows asks for permission (it opens the firewall on your home network).
+At the end it shows a **token**: note it.
+
+**2. On the Steam Deck.** You need [Decky Loader](https://decky.xyz).
+
+1. Open the `…` menu → Decky (plug icon) → ⚙️ Settings → turn on **Developer mode**.
+2. In **Developer**, choose **Install plugin from URL** and enter:
+   `https://github.com/hugouchoasborges/decky-pc-remote/releases/latest/download/decky-pc-remote.zip`
+3. Open `…` → **PC Remote** → **Add a PC** → **Search the network**, type the **token**, **Save**.
+
+Done: the panel shows your PC as **Online**. To update later, run both steps again
+(the token stays the same).
+
 <p align="center">
   <img src="docs/screenshots/panel.png" width="360" alt="The whole PC Remote panel on the Steam Deck: status card (LEGION-5I online, address, Steam open, volume muted); Games on the PC with Zelda (non-Steam, artwork set on the Deck), Spider-Man, Clair Obscur, The Last of Us and Rytmik; Close Steam; volume slider and Unmute; Turn off the screen; Sleep, Restart and Shut down; and Edit, Add, Remove for PCs">
 </p>
@@ -51,7 +74,7 @@ The agent runs in your Windows session (a logon task, no window) rather than as 
 service: a service lives in a separate session without a desktop, where it could neither open
 Steam on your screen nor turn the display off.
 
-## Install
+## Install from source
 
 ### 1. PC (Windows)
 
@@ -71,15 +94,16 @@ Running it again updates the agent and keeps the token. Remove everything with
 
 ### 2. Steam Deck
 
-Build the zip (or take it from a release):
+Build both release files:
 
 ```bash
 npm install
 npm run build
+python scripts/package.py   # release/decky-pc-remote.zip and release/PCRemote-Setup.ps1
 ```
 
-Put `plugin.json`, `main.py`, `package.json`, `LICENSE` and `dist/index.js` in a `PC Remote/`
-folder, zip it, then on the Deck: **Decky → Settings → Developer → Install Plugin from ZIP File**.
+On the Deck: **Decky → Settings → Developer → Install Plugin from ZIP File** with
+`release/decky-pc-remote.zip`.
 
 Open `…` → **PC Remote** → **Add a PC**, press **Search the network**, and type the token.
 
@@ -103,6 +127,12 @@ Every HTTP request needs the header `X-Token: <token>`.
 Local network only. The firewall rules cover private networks, and the token is the only
 protection, so don't forward the port to the internet. To reach the PC away from home, put the
 PC and the Deck on a VPN such as Tailscale and add the PC with its VPN address.
+
+## Releasing
+
+Push a tag such as `v1.1.0`: the Release workflow builds the plugin with that version and
+publishes `decky-pc-remote.zip` and `PCRemote-Setup.ps1` (the Windows installer with the agent
+embedded, a single file). The Quick start links always point at the latest release.
 
 ## Development
 

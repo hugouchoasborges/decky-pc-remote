@@ -1,6 +1,6 @@
 {
   "name": "decky-pc-remote",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Control your Windows PC (Steam, power, screen, volume) from the Steam Deck's Quick Access Menu",
   "type": "module",
   "scripts": {

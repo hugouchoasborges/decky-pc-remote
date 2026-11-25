@@ -1,4 +1,4 @@
-# Installs the PC Remote agent for the current user:
+# Installs (or updates) the PC Remote agent for the current user:
 # - creates the token (%APPDATA%\pc-remote\token.txt) if it does not exist
 # - copies the agent to %APPDATA%\pc-remote
 # - registers a logon task that starts it hidden in your session, and starts it now
@@ -12,8 +12,14 @@ if (-not (Test-Path $tokenFile)) {
     $chars = 'abcdefghjkmnpqrstuvwxyz23456789'.ToCharArray()
     -join (1..8 | ForEach-Object { $chars | Get-Random }) | Set-Content $tokenFile -NoNewline
 }
-Copy-Item (Join-Path $PSScriptRoot 'pc-remote-agent.ps1') $dir -Force
 $agent = Join-Path $dir 'pc-remote-agent.ps1'
+# The release's PCRemote-Setup.ps1 carries the agent inside ($EmbeddedAgent, prepended by
+# scripts/package.py); from a clone, the agent file sits next to this script.
+if (Get-Variable EmbeddedAgent -ErrorAction SilentlyContinue) {
+    [IO.File]::WriteAllText($agent, $EmbeddedAgent, [Text.UTF8Encoding]::new($true))
+} else {
+    Copy-Item (Join-Path $PSScriptRoot 'pc-remote-agent.ps1') $agent -Force
+}
 
 $name = 'PC Remote Agent'
 # conhost --headless runs PowerShell with no console window at all (not even a flash).
@@ -46,3 +52,6 @@ $ips = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -i
 Write-Host "PC Remote agent running on port $Port"
 Write-Host "Host:  $($ips -join ', ')"
 Write-Host "Token: $((Get-Content $tokenFile -Raw).Trim())"
+Write-Host ''
+Write-Host 'On the Steam Deck: ... > PC Remote > Add a PC > Search the network, then type the token.'
+if (Get-Variable EmbeddedAgent -ErrorAction SilentlyContinue) { Read-Host 'Press Enter to close' | Out-Null }
