@@ -13,14 +13,15 @@ import {
   Navigation,
   SliderField,
   TextField,
-  ToggleField,
   showModal,
   staticClasses,
 } from "@decky/ui";
 import { callable, definePlugin, toaster } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { FaDesktop } from "react-icons/fa";
-import { BusyButton, CardState, Notice, Section, StatusCard } from "./ui";
+import { FaSteam } from "react-icons/fa";
+import { FiEdit2, FiEyeOff, FiKey, FiLogOut, FiMonitor, FiMoon, FiPlus, FiPower, FiRotateCw, FiSettings, FiTrash2, FiVolume2, FiVolumeX, FiWifi } from "react-icons/fi";
+import { CardState, Notice, PanelStyles, Section, StatusCard, TileRow, WideTile } from "./ui";
 
 type Pc = { name: string; host: string; port: number; token: string };
 type Config = { pcs: Pc[]; selected: number };
@@ -135,16 +136,19 @@ function Content() {
 
   if (!pc) {
     return (
-      <PanelSection title="PC">
-        <Notice kind="info">No PC yet. Install the agent on the PC (agent\install.ps1), then add it here.</Notice>
-        <BusyButton label="Add a PC" onClick={() => edit(-1)} />
+      <PanelSection>
+        <PanelStyles />
+        <Notice kind="info">No PC yet. Install the agent on the PC (agent\install.ps1), then add it here: Search the network fills in its name and address.</Notice>
+        <WideTile icon={FiPlus} label="Add a PC" t="steam" onClick={() => edit(-1)} />
       </PanelSection>
     );
   }
 
+  const volumeText = online ? (status.muted ? "Muted" : `${status.volume}%`) : "—";
   return (
     <>
-      <PanelSection title="PC">
+      <PanelSection>
+        <PanelStyles />
         {config.pcs.length > 1 && (
           <PanelSectionRow>
             <Dropdown
@@ -155,53 +159,55 @@ function Content() {
           </PanelSectionRow>
         )}
         <StatusCard state={state} title={pc.name} lines={[
-          ["Address", `${pc.host}:${pc.port || 47990}`],
-          ["Steam", online ? (status.steam ? "Open" : "Closed") : "—"],
-          ["Volume", online ? (status.muted ? "Muted" : `${status.volume}%`) : "—"],
+          [FiWifi, "Address", `${pc.host}:${pc.port || 47990}`],
+          [FaSteam, "Steam", online ? (status.steam ? "Open" : "Closed") : "—"],
+          [status.muted ? FiVolumeX : FiVolume2, "Volume", volumeText],
         ]} />
-        {badToken && (
-          <Notice kind="error">The PC refused the token. Check the token install.ps1 showed.</Notice>
-        )}
-        {badToken && <BusyButton label="Fix token" onClick={() => edit(config.selected)} />}
+        {badToken && <Notice kind="error">The PC refused the token. Check the token install.ps1 showed.</Notice>}
+        {badToken && <WideTile icon={FiKey} label="Fix token" t="danger" onClick={() => edit(config.selected)} />}
         {state === "offline" && !badToken && (
           <Notice kind="error">No answer. Is the PC on, on the same network, with the agent running?</Notice>
         )}
         {notice && <Notice kind="info">{notice}</Notice>}
       </PanelSection>
 
-      <Section id="steam" title="Steam">
+      <Section id="steam" title="Steam" icon={FaSteam} t="steam" summary={online ? (status.steam ? "Open" : "Closed") : undefined}>
         {status.steam
-          ? <BusyButton label="Close Steam" disabled={!online} onClick={() => run("/steam/close", "Closing Steam")} />
-          : <BusyButton label="Open Steam" disabled={!online} onClick={() => run("/steam/open", "Opening Steam")} />}
+          ? <WideTile icon={FiLogOut} label="Close Steam" t="steam" disabled={!online} onClick={() => run("/steam/close", "Closing Steam")} />
+          : <WideTile icon={FaSteam} label="Open Steam" t="steam" disabled={!online} onClick={() => run("/steam/open", "Opening Steam")} />}
       </Section>
 
-      <Section id="volume" title="Volume">
+      <Section id="volume" title="Volume" icon={status.muted ? FiVolumeX : FiVolume2} t="sound" summary={online ? volumeText : undefined}>
         <PanelSectionRow>
           <SliderField label="Volume" value={status.volume ?? 0} min={0} max={100} step={2} showValue disabled={!online} onChange={onVolume} />
         </PanelSectionRow>
-        <PanelSectionRow>
-          <ToggleField label="Mute" checked={!!status.muted} disabled={!online} onChange={async () => apply(await command("/mute"))} />
-        </PanelSectionRow>
+        <WideTile icon={status.muted ? FiVolume2 : FiVolumeX} label={status.muted ? "Unmute" : "Mute"} t="sound" disabled={!online}
+          onClick={async () => apply(await command("/mute"))} />
       </Section>
 
-      <Section id="screen" title="Screen">
-        <BusyButton label="Turn off the screen only" disabled={!online} onClick={() => run("/screen/off", "Screen off")} />
+      <Section id="screen" title="Screen" icon={FiMonitor} t="screen">
+        <WideTile icon={FiEyeOff} label="Turn off the screen" t="screen" disabled={!online} onClick={() => run("/screen/off", "Screen off")} />
       </Section>
 
-      <Section id="power" title="Power (asks to confirm)" initiallyCollapsed>
-        <BusyButton label="Suspend" disabled={!online} onClick={() => confirm("Suspend the PC?", "/power/suspend", "Suspending")} />
-        <BusyButton label="Restart" disabled={!online} onClick={() => confirm("Restart the PC?", "/power/restart", "Restarting")} />
-        <BusyButton label="Shut down" disabled={!online} onClick={() => confirm("Shut down the PC?", "/power/shutdown", "Shutting down")} />
+      <Section id="power" title="Power" icon={FiPower} t="danger" summary="Asks to confirm">
+        <TileRow tiles={[
+          { icon: FiMoon, label: "Sleep", t: "caution", disabled: !online, onClick: () => confirm("Put the PC to sleep?", "/power/suspend", "Going to sleep") },
+          { icon: FiRotateCw, label: "Restart", t: "caution", disabled: !online, onClick: () => confirm("Restart the PC?", "/power/restart", "Restarting") },
+          { icon: FiPower, label: "Shut down", t: "danger", disabled: !online, onClick: () => confirm("Shut down the PC?", "/power/shutdown", "Shutting down") },
+        ]} />
       </Section>
 
-      <Section id="config" title="Settings" initiallyCollapsed>
-        <BusyButton label="Edit this PC" onClick={() => edit(config.selected)} />
-        <BusyButton label="Add another PC" onClick={() => edit(-1)} />
-        <BusyButton label="Remove this PC" onClick={() => {
-          Navigation.CloseSideMenus();
-          showModal(<ConfirmModal strTitle={`Remove ${pc.name}?`} strOKButtonText="Remove" strCancelButtonText="Cancel"
-            onOK={async () => { setConfig(await removePc(config.selected)); setStatus({}); refresh(); }} />);
-        }} />
+      <Section id="config" title="PCs" icon={FiSettings} t="neutral" summary={`${config.pcs.length} saved`} initiallyCollapsed>
+        <TileRow tiles={[
+          { icon: FiEdit2, label: "Edit", t: "neutral", onClick: () => edit(config.selected) },
+          { icon: FiPlus, label: "Add", t: "steam", onClick: () => edit(-1) },
+          { icon: FiTrash2, label: "Remove", t: "danger", onClick: () => {
+            Navigation.CloseSideMenus();
+            showModal(<ConfirmModal strTitle={`Remove ${pc.name}?`} strDescription="Its address and token are forgotten on this Deck."
+              strOKButtonText="Remove" strCancelButtonText="Cancel"
+              onOK={async () => { setConfig(await removePc(config.selected)); setStatus({}); refresh(); }} />);
+          } },
+        ]} />
       </Section>
     </>
   );
