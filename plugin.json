@@ -1,0 +1,11 @@
+{
+  "name": "PC Remote",
+  "author": "Hugo Borges",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["remote", "pc", "windows", "steam", "volume", "power"],
+    "description": "Open or close Steam, turn the screen off, suspend, shut down or restart, and set the volume of your Windows PC from the Quick Access Menu.",
+    "image": ""
+  }
+}
