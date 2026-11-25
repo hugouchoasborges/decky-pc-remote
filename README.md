@@ -5,6 +5,7 @@ you stream from the PC with Steam Link / Remote Play and want to open Steam, set
 turn the screen off or put the PC to sleep without walking to the desk.
 
 <p>
+  <img src="docs/screenshots/games-on-the-pc.png" width="300" alt="Games on the PC expanded: Steam games with their capsules and non-Steam shortcuts with a lettered tile and a Non-Steam label">
   <img src="docs/screenshots/status-and-steam.png" width="300" alt="PC Remote: status card with the PC online, its address, Steam and volume, then the Steam section with Open Steam">
   <img src="docs/screenshots/volume-screen-power.png" width="300" alt="Volume slider and Unmute, Turn off the screen, and the Power row with Sleep, Restart and Shut down">
   <img src="docs/screenshots/power-and-pcs.png" width="300" alt="Power row with Sleep focused, and the PCs section with Edit, Add and Remove">
