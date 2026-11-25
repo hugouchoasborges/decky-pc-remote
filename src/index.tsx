@@ -1,5 +1,4 @@
 import {
-  ButtonItem,
   ConfirmModal,
   DialogBody,
   DialogButton,
@@ -21,10 +20,11 @@ import {
 import { callable, definePlugin, toaster } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { FaDesktop } from "react-icons/fa";
+import { BusyButton, CardState, Notice, Section, StatusCard } from "./ui";
 
 type Pc = { name: string; host: string; port: number; token: string };
 type Config = { pcs: Pc[]; selected: number };
-type Status = { host?: string; steam?: boolean; volume?: number; muted?: boolean; error?: string };
+type Status = { host?: string; steam?: boolean; volume?: number; muted?: boolean; error?: string; moved_to?: string };
 
 const getConfig = callable<[], Config>("get_config");
 const savePc = callable<[number, Pc], Config>("save_pc");
@@ -47,40 +47,40 @@ function PcEditModal({ initial, onSave, closeModal }: { initial: Pc; onSave: (pc
   const [token, setToken] = useState(initial.token);
   const [found, setFound] = useState<string>("");
   const search = async () => {
-    setFound("Procurando…");
+    setFound("Searching…");
     const list = await discover();
-    if (!list.length) { setFound("Nenhum PC encontrado (o agente está rodando e o firewall liberado?)"); return; }
+    if (!list.length) { setFound("No PC found (is the agent running and the firewall open?)"); return; }
     const pick = list.find((d) => d.name.toLowerCase() === name.trim().toLowerCase()) ?? list[0];
     setName(pick.name); setHost(pick.host); setPort(String(pick.port));
-    setFound(`Encontrado: ${list.map((d) => `${d.name} (${d.host})`).join(", ")}`);
+    setFound(`Found: ${list.map((d) => `${d.name} (${d.host})`).join(", ")}`);
   };
   const valid = host.trim() && token.trim();
   return (
     <ModalRoot onCancel={closeModal}>
-      <DialogHeader>{initial.host ? "Editar PC" : "Adicionar PC"}</DialogHeader>
+      <DialogHeader>{initial.host ? "Edit PC" : "Add a PC"}</DialogHeader>
       <DialogBody>
-        <Field label="Nome" childrenLayout="below" childrenContainerWidth="max">
+        <Field label="Name" childrenLayout="below" childrenContainerWidth="max">
           <TextField value={name} onChange={(e) => setName(e?.target?.value ?? "")} style={{ width: "100%" }} />
         </Field>
-        <Field label="IP ou nome do PC" childrenLayout="below" childrenContainerWidth="max">
+        <Field label="PC's IP or name" childrenLayout="below" childrenContainerWidth="max">
           <TextField value={host} onChange={(e) => setHost(e?.target?.value ?? "")} style={{ width: "100%" }} />
         </Field>
-        <Field label="Porta" childrenLayout="below" childrenContainerWidth="max">
+        <Field label="Port" childrenLayout="below" childrenContainerWidth="max">
           <TextField value={port} onChange={(e) => setPort(e?.target?.value ?? "")} style={{ width: "100%" }} />
         </Field>
-        <Field label="Token" description="Mostrado pelo install.ps1 no PC" childrenLayout="below" childrenContainerWidth="max">
+        <Field label="Token" description="Shown by install.ps1 on the PC" childrenLayout="below" childrenContainerWidth="max">
           <TextField value={token} onChange={(e) => setToken(e?.target?.value ?? "")} style={{ width: "100%" }} />
         </Field>
         {found && <Field label={found} />}
       </DialogBody>
       <DialogFooter>
         <Focusable style={{ display: "flex", gap: "8px" }} flow-children="row">
-          <DialogButton onClick={search}>Procurar na rede</DialogButton>
-          <DialogButton onClick={closeModal}>Cancelar</DialogButton>
+          <DialogButton onClick={search}>Search the network</DialogButton>
+          <DialogButton onClick={closeModal}>Cancel</DialogButton>
           <DialogButton disabled={!valid} onClick={() => {
             onSave({ name: name.trim() || host.trim(), host: host.trim(), port: Number(port) || 47990, token: token.trim() });
             closeModal?.();
-          }}>Salvar</DialogButton>
+          }}>Save</DialogButton>
         </Focusable>
       </DialogFooter>
     </ModalRoot>
@@ -92,7 +92,12 @@ function Content() {
   const [status, setStatus] = useState<Status>({});
   const volTimer = useRef<number>();
 
-  const refresh = async () => setStatus(await getStatus());
+  const [notice, setNotice] = useState<string>("");
+  const apply = (r: Status) => {
+    setStatus(r);
+    if (r.moved_to) setNotice(`The PC's IP changed: found again at ${r.moved_to}`);
+  };
+  const refresh = async () => apply(await getStatus());
   useEffect(() => {
     getConfig().then((c) => { setConfig(c); if (c.pcs.length) refresh(); });
     const t = window.setInterval(refresh, 3000);
@@ -101,18 +106,20 @@ function Content() {
 
   const run = async (path: string, done: string) => {
     const r = await command(path);
-    if (r.error) toaster.toast({ title: "PC Remote", body: r.error });
-    else toaster.toast({ title: "PC Remote", body: done });
+    toaster.toast({ title: "PC Remote", body: r.error ?? done });
+    if (r.moved_to) apply(r);
     setTimeout(refresh, 1500);
   };
   // The modal opens in the main window: close the Quick Access Menu first so it is not hidden behind it.
-  const confirm = (title: string, path: string, done: string) => { Navigation.CloseSideMenus();
-    showModal(<ConfirmModal strTitle={title} strDescription="Tem certeza?" strOKButtonText="Sim" strCancelButtonText="Não" onOK={() => run(path, done)} />); };
+  const confirm = (title: string, path: string, done: string) => {
+    Navigation.CloseSideMenus();
+    showModal(<ConfirmModal strTitle={title} strDescription="Are you sure?" strOKButtonText="Yes" strCancelButtonText="No" onOK={() => run(path, done)} />);
+  };
 
   const onVolume = (v: number) => {
     setStatus((s) => ({ ...s, volume: v }));
     window.clearTimeout(volTimer.current);
-    volTimer.current = window.setTimeout(async () => setStatus(await setVolume(v)), 200);
+    volTimer.current = window.setTimeout(async () => apply(await setVolume(v)), 200);
   };
 
   const edit = (index: number) => {
@@ -123,6 +130,18 @@ function Content() {
 
   const pc = config.pcs[config.selected];
   const online = !status.error && status.host !== undefined;
+  const state: CardState = online ? "online" : status.error ? "offline" : "connecting";
+  const badToken = status.error === "Invalid token";
+
+  if (!pc) {
+    return (
+      <PanelSection title="PC">
+        <Notice kind="info">No PC yet. Install the agent on the PC (agent\install.ps1), then add it here.</Notice>
+        <BusyButton label="Add a PC" onClick={() => edit(-1)} />
+      </PanelSection>
+    );
+  }
+
   return (
     <>
       <PanelSection title="PC">
@@ -131,52 +150,59 @@ function Content() {
             <Dropdown
               rgOptions={config.pcs.map((p, i) => ({ data: i, label: p.name }))}
               selectedOption={config.selected}
-              onChange={async (o) => { setConfig(await selectPc(o.data)); setStatus({}); refresh(); }}
+              onChange={async (o) => { setConfig(await selectPc(o.data)); setStatus({}); setNotice(""); refresh(); }}
             />
           </PanelSectionRow>
         )}
-        <PanelSectionRow>
-          <Field label={pc?.name ?? "—"} description={status.error ?? (online ? `Ligado (${status.host})` : "Conectando…")} />
-        </PanelSectionRow>
+        <StatusCard state={state} title={pc.name} lines={[
+          ["Address", `${pc.host}:${pc.port || 47990}`],
+          ["Steam", online ? (status.steam ? "Open" : "Closed") : "—"],
+          ["Volume", online ? (status.muted ? "Muted" : `${status.volume}%`) : "—"],
+        ]} />
+        {badToken && (
+          <Notice kind="error">The PC refused the token. Check the token install.ps1 showed.</Notice>
+        )}
+        {badToken && <BusyButton label="Fix token" onClick={() => edit(config.selected)} />}
+        {state === "offline" && !badToken && (
+          <Notice kind="error">No answer. Is the PC on, on the same network, with the agent running?</Notice>
+        )}
+        {notice && <Notice kind="info">{notice}</Notice>}
       </PanelSection>
 
-      <PanelSection title="Steam">
-        <PanelSectionRow>
-          {status.steam
-            ? <ButtonItem layout="below" disabled={!online} onClick={() => run("/steam/close", "Fechando a Steam")}>Fechar Steam</ButtonItem>
-            : <ButtonItem layout="below" disabled={!online} onClick={() => run("/steam/open", "Abrindo a Steam")}>Abrir Steam</ButtonItem>}
-        </PanelSectionRow>
-      </PanelSection>
+      <Section id="steam" title="Steam">
+        {status.steam
+          ? <BusyButton label="Close Steam" disabled={!online} onClick={() => run("/steam/close", "Closing Steam")} />
+          : <BusyButton label="Open Steam" disabled={!online} onClick={() => run("/steam/open", "Opening Steam")} />}
+      </Section>
 
-      <PanelSection title="Volume">
+      <Section id="volume" title="Volume">
         <PanelSectionRow>
           <SliderField label="Volume" value={status.volume ?? 0} min={0} max={100} step={2} showValue disabled={!online} onChange={onVolume} />
         </PanelSectionRow>
         <PanelSectionRow>
-          <ToggleField label="Mudo" checked={!!status.muted} disabled={!online} onChange={async () => setStatus(await command("/mute"))} />
+          <ToggleField label="Mute" checked={!!status.muted} disabled={!online} onChange={async () => apply(await command("/mute"))} />
         </PanelSectionRow>
-      </PanelSection>
+      </Section>
 
-      <PanelSection title="Tela">
-        <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => run("/screen/off", "Tela desligada")}>Desligar só a tela</ButtonItem></PanelSectionRow>
-      </PanelSection>
+      <Section id="screen" title="Screen">
+        <BusyButton label="Turn off the screen only" disabled={!online} onClick={() => run("/screen/off", "Screen off")} />
+      </Section>
 
-      <PanelSection title="Energia (pede confirmação)">
-        <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => confirm("Suspender o PC?", "/power/suspend", "Suspendendo")}>Suspender</ButtonItem></PanelSectionRow>
-        <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => confirm("Reiniciar o PC?", "/power/restart", "Reiniciando")}>Reiniciar</ButtonItem></PanelSectionRow>
-        <PanelSectionRow><ButtonItem layout="below" disabled={!online} onClick={() => confirm("Desligar o PC?", "/power/shutdown", "Desligando")}>Desligar</ButtonItem></PanelSectionRow>
-      </PanelSection>
+      <Section id="power" title="Power (asks to confirm)" initiallyCollapsed>
+        <BusyButton label="Suspend" disabled={!online} onClick={() => confirm("Suspend the PC?", "/power/suspend", "Suspending")} />
+        <BusyButton label="Restart" disabled={!online} onClick={() => confirm("Restart the PC?", "/power/restart", "Restarting")} />
+        <BusyButton label="Shut down" disabled={!online} onClick={() => confirm("Shut down the PC?", "/power/shutdown", "Shutting down")} />
+      </Section>
 
-      <PanelSection title="Configurar">
-        <PanelSectionRow><ButtonItem layout="below" disabled={!pc} onClick={() => edit(config.selected)}>Editar este PC</ButtonItem></PanelSectionRow>
-        <PanelSectionRow><ButtonItem layout="below" onClick={() => edit(-1)}>Adicionar outro PC</ButtonItem></PanelSectionRow>
-        {pc && (
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => { Navigation.CloseSideMenus(); showModal(<ConfirmModal strTitle={`Remover ${pc.name}?`} strOKButtonText="Remover" strCancelButtonText="Cancelar"
-              onOK={async () => { setConfig(await removePc(config.selected)); setStatus({}); refresh(); }} />); }}>Remover este PC</ButtonItem>
-          </PanelSectionRow>
-        )}
-      </PanelSection>
+      <Section id="config" title="Settings" initiallyCollapsed>
+        <BusyButton label="Edit this PC" onClick={() => edit(config.selected)} />
+        <BusyButton label="Add another PC" onClick={() => edit(-1)} />
+        <BusyButton label="Remove this PC" onClick={() => {
+          Navigation.CloseSideMenus();
+          showModal(<ConfirmModal strTitle={`Remove ${pc.name}?`} strOKButtonText="Remove" strCancelButtonText="Cancel"
+            onOK={async () => { setConfig(await removePc(config.selected)); setStatus({}); refresh(); }} />);
+        }} />
+      </Section>
     </>
   );
 }

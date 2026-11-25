@@ -63,7 +63,7 @@ def _request(method: str, path: str) -> dict:
     data = _load()
     pcs = data["pcs"]
     if not pcs:
-        return {"error": "Nenhum PC configurado"}
+        return {"error": "No PC configured"}
     i = min(data["selected"], len(pcs) - 1)
     pc = pcs[i]
     try:
@@ -73,7 +73,7 @@ def _request(method: str, path: str) -> dict:
             _save(data)
         return res
     except urllib.error.HTTPError as e:
-        return {"error": "Token inválido" if e.code == 401 else f"Erro {e.code}"}
+        return {"error": "Invalid token" if e.code == 401 else f"Error {e.code}"}
     except Exception as e:  # offline, timeout, refused: maybe the IP changed (DHCP)
         decky.logger.info(f"{method} {pc['host']}{path}: {e}")
     wanted = (pc.get("hostname") or pc.get("name") or "").lower()
@@ -83,10 +83,12 @@ def _request(method: str, path: str) -> dict:
             pc["host"] = d["host"]
             _save(data)
             try:
-                return _call(pc, method, path)
+                res = _call(pc, method, path)
+                res["moved_to"] = d["host"]  # the panel tells the player the PC was found again
+                return res
             except Exception:
                 break
-    return {"error": "PC fora do ar"}
+    return {"error": "PC offline"}
 
 
 class Plugin:
@@ -127,7 +129,7 @@ class Plugin:
         allowed = {"/steam/open", "/steam/close", "/screen/off", "/power/suspend",
                    "/power/shutdown", "/power/restart", "/mute"}
         if path not in allowed:
-            return {"error": "comando desconhecido"}
+            return {"error": "unknown command"}
         return _request("POST", path)
 
     async def set_volume(self, level: int) -> dict:

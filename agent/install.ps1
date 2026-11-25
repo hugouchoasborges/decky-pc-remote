@@ -16,13 +16,18 @@ Copy-Item (Join-Path $PSScriptRoot 'pc-remote-agent.ps1') $dir -Force
 $agent = Join-Path $dir 'pc-remote-agent.ps1'
 
 $name = 'PC Remote Agent'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$agent`" -Port $Port"
+# conhost --headless runs PowerShell with no console window at all (not even a flash).
+$action = New-ScheduledTaskAction -Execute 'conhost.exe' `
+    -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$agent`" -Port $Port"
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+# Any earlier copy still holding the port would make the new one fail to start.
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+    Where-Object CommandLine -like '*pc-remote-agent.ps1*' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-Sleep -Milliseconds 500
 Start-ScheduledTask -TaskName $name
 
 # TCP for commands, UDP for discovery (the Deck finds the PC again when its IP changes).
