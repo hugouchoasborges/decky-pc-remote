@@ -28,7 +28,7 @@ Done: the panel shows your PC as **Online**. To update later, run both steps aga
 (the token stays the same).
 
 <p align="center">
-  <img src="docs/screenshots/panel.png" width="360" alt="The whole PC Remote panel on the Steam Deck: status card (LEGION-5I online, address, Steam open, volume muted); Games on the PC with Zelda (non-Steam, artwork set on the Deck), Spider-Man, Clair Obscur, The Last of Us and Rytmik; Close Steam; volume slider and Unmute; Turn off the screen; Sleep, Restart and Shut down; and Edit, Add, Remove for PCs">
+  <img src="docs/screenshots/panel.png" width="360" alt="The whole PC Remote panel on the Steam Deck: status card (LEGION-5I online, address, Steam open, volume muted, on for 1d 22h) with meters for the i7-12700H, RAM, Iris Xe and RTX 3060; Games on the PC with Spider-Man, Zelda (non-Steam, artwork set on the Deck), Clair Obscur and The Last of Us; Close Steam; volume slider, Unmute and the Output picker; Turn off the screen; Sleep, Restart and Shut down; and Edit, Add, Remove for PCs">
 </p>
 
 ## What it does
