@@ -35,16 +35,21 @@ Done: the panel shows your PC as **Online**. To update later, run both steps aga
 
 | Section | Controls |
 |---|---|
-| **Status** | Online / Offline / Connecting at a glance, with the PC's address, whether Steam is open, and the volume |
+| **Status** | Online / Offline / Connecting at a glance, with the PC's address, whether Steam is open, the volume, the game running and how long the PC has been on; live meters for the CPU (by model), each GPU Windows has running, and RAM |
 | **Games on the PC** | The Steam games installed on the PC and its non-Steam shortcuts (emulators, launchers), last played first, with a *Playing* badge on the running one. Collapsed by default; pressing a game opens its page in the Deck's library, where Steam offers **Stream** |
 | **Steam** | Open Steam, or close it when it is running |
-| **Volume** | A slider for the PC's speakers and a Mute / Unmute button |
+| **Volume** | A slider for the PC's speakers, a Mute / Unmute button, and **Output** to switch the default device (speakers, headphones, TV) |
 | **Screen** | Turn the PC's screen off (moving the mouse or a key wakes it) |
 | **Power** | Sleep, Restart, Shut down, each asking to confirm first |
 | **PCs** | Edit, add or remove PCs, switch between them when you have more than one, and choose which games each PC shows |
 
 - Only the games list collapses (its header shows how many games are installed); the Deck
   remembers whether you keep it open.
+- The meters are measured only while the panel is on screen: the plugin asks every 2 s while
+  you look and stops when the menu closes. A laptop's MUX switch shows: with the dedicated GPU
+  off, only the integrated one has a meter.
+- **Output** lists the outputs Windows has active (Remote Play's virtual device left out); if
+  Windows refuses a device, the panel says so.
 - The games list is read from the PC's Steam library files, so it works with Steam closed;
   when Steam is closed the list offers to open it, since streaming needs it running.
 - **PCs → Edit** lists the PC's games with a switch each: turn one off to hide it from the
@@ -120,6 +125,9 @@ Every HTTP request needs the header `X-Token: <token>`.
 | `POST /power/suspend`, `/power/restart`, `/power/shutdown` | Power actions, 1.5 s after the reply |
 | `POST /volume?level=0..100` | Sets the default output device's volume (and unmutes) |
 | `POST /mute` | Toggles mute |
+| `GET /stats` | `{"cpu","cpuName","ramUsed","ramTotal","gpus":[{"name","use"}],"uptime","game"}`, measured on request |
+| `GET /audio` | `{"default","devices":[{"id","name","kind"}]}`: active outputs |
+| `POST /audio/default?id=` | Makes that output the default |
 | UDP datagram `PCREMOTE_DISCOVER` to port 47990 | Answers `{"name","port"}`; needs no token and reveals nothing secret |
 
 ## Network and security

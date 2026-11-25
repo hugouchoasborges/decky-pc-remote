@@ -4,6 +4,7 @@ import os
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import decky
@@ -134,6 +135,15 @@ class Plugin:
         if path not in allowed:
             return {"error": "unknown command"}
         return _request("POST", path)
+
+    async def stats(self) -> dict:
+        return _request("GET", "/stats")
+
+    async def audio(self) -> dict:
+        return _request("GET", "/audio")
+
+    async def set_audio(self, device_id: str) -> dict:
+        return _request("POST", "/audio/default?id=" + urllib.parse.quote(str(device_id), safe=""))
 
     async def set_volume(self, level: int) -> dict:
         return _request("POST", f"/volume?level={max(0, min(100, int(level)))}")

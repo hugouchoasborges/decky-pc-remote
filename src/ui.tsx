@@ -51,9 +51,10 @@ const css = `
 .pcr-game.DialogButton.gpfocus, .pcr-game.DialogButton:hover { background: ${tone.steam}33 !important; }
 .pcr-game img { width: 64px; height: 30px; flex: 0 0 64px; object-fit: cover; border-radius: 3px; background: #1b2838; }
 .pcr-game .pcr-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcr-bar { transition: width 600ms cubic-bezier(0.25, 1, 0.5, 1); }
 .pcr-row { display: grid; gap: 8px; width: 100%; padding: 4px 0; }
 @media (prefers-reduced-motion: reduce) {
-  .pcr-head .pcr-chev, .pcr-tile.DialogButton { transition: none; }
+  .pcr-head .pcr-chev, .pcr-tile.DialogButton, .pcr-bar { transition: none; }
   .pcr-tile.DialogButton:active { transform: none; }
 }
 `;
@@ -82,7 +83,28 @@ function IconBadge({ icon: Icon, t, size = 28 }: { icon: IconType; t: Tone; size
 
 export type CardState = "online" | "offline" | "connecting";
 
-export function StatusCard({ state, title, lines }: { state: CardState; title: string; lines: [IconType, string, ReactNode][] }) {
+/** A live reading under the status card: a short bar when it has a percentage. */
+export type Meter = { label: string; text: string; pct?: number | null };
+
+function MeterCell({ label, text, pct }: Meter) {
+  const hot = (pct ?? 0) >= 85;
+  const c = hot ? tone.caution : tone.ok;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 4, fontSize: 11 }}>
+        <span style={{ color: inkMuted, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        <span style={{ marginLeft: "auto", color: ink, fontWeight: 700, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{text}</span>
+      </div>
+      {pct != null && (
+        <div style={{ height: 4, marginTop: 4, borderRadius: 2, background: line, overflow: "hidden" }}>
+          <div className="pcr-bar" style={{ height: "100%", width: `${Math.max(2, Math.min(100, pct))}%`, background: c, borderRadius: 2 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function StatusCard({ state, title, lines, meters }: { state: CardState; title: string; lines: [IconType, string, ReactNode][]; meters?: Meter[] }) {
   const t: Tone = state === "online" ? "ok" : state === "offline" ? "danger" : "caution";
   const Icon = state === "online" ? FiCheckCircle : state === "offline" ? FiXCircle : FiAlertCircle;
   const label = state === "online" ? "Online" : state === "offline" ? "Offline" : "Connecting…";
@@ -111,6 +133,11 @@ export function StatusCard({ state, title, lines }: { state: CardState; title: s
             </div>
           ))}
         </div>
+        {meters && meters.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px", padding: "8px 0 6px", borderTop: `1px solid ${line}` }}>
+            {meters.map((m) => <MeterCell key={m.label} {...m} />)}
+          </div>
+        )}
       </div>
     </PanelSectionRow>
   );

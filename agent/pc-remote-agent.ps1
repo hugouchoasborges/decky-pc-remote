@@ -9,6 +9,9 @@
 #   POST /power/suspend | /power/shutdown | /power/restart
 #   POST /volume?level=0..100
 #   POST /mute                   -> toggles mute
+#   GET  /audio                  -> {"default","devices":[{"id","name","kind"}]}: active outputs
+#   POST /audio/default?id=      -> makes that output the default (all roles)
+#   GET  /stats                  -> {"cpu","ramUsed","ramTotal","gpus":[{"name","use"}],"uptime","game"}: measured per request
 param(
     [int]$Port = 47990,
     [string]$ConfigDir = (Join-Path $env:APPDATA 'pc-remote')
@@ -33,7 +36,18 @@ interface IAudioEndpointVolume {
     int GetMute(out bool mute);
 }
 [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDevice { int Activate(ref Guid id, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o); }
+interface IMMDevice {
+    int Activate(ref Guid id, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+    int OpenPropertyStore(int access, out IntPtr store);
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+}
+// Undocumented but stable since Windows 7: the interface the Sound settings use to change the default device.
+[Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IPolicyConfig {
+    int a(); int b(); int c(); int d(); int e(); int f(); int g(); int h(); int i(); int j();
+    int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string id, int role);
+}
+[ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")] class CPolicyConfigClient {}
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IMMDeviceEnumerator { int f(); int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice d); }
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
@@ -49,6 +63,58 @@ public static class PcAudio {
     public static void Set(int p) { Ep().SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, p)) / 100f, Guid.Empty); }
     public static bool Muted() { bool m; Ep().GetMute(out m); return m; }
     public static void Mute(bool m) { Ep().SetMute(m, Guid.Empty); }
+    public static string DefaultId() {
+        var e = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+        IMMDevice d; if (e.GetDefaultAudioEndpoint(0, 1, out d) != 0) return null;
+        string id; d.GetId(out id); return id;
+    }
+    // Console, multimedia and communications roles, as the Sound settings do.
+    public static void SetDefault(string id) {
+        var p = (IPolicyConfig)new CPolicyConfigClient();
+        for (int r = 0; r < 3; r++) Marshal.ThrowExceptionForHR(p.SetDefaultEndpoint(id, r));
+    }
+}
+// The GPUs Windows has running right now (a MUX switch can turn the dedicated one off), via DXGI.
+[Guid("770aae78-f26f-4dba-a829-253c83d1b387"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IDXGIFactory1 { int a(); int b(); int c(); int d(); int e(); int f(); int g(); int h(); int i();
+    [PreserveSig] int EnumAdapters1(uint n, out IDXGIAdapter1 ad); }
+[Guid("29038f61-3839-4626-91fd-086879011a05"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IDXGIAdapter1 { int a(); int b(); int c(); int d(); int e(); int f(); int g(); [PreserveSig] int GetDesc1(out AdapterDesc d); }
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+struct AdapterDesc { [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Name;
+    public uint Vendor, Device, SubSys, Rev; public UIntPtr Vram, SysMem, Shared; public uint LuidLow; public int LuidHigh; public uint Flags; }
+public class GpuInfo { public string Name; public string Luid; }
+public static class PcGpu {
+    [DllImport("dxgi.dll")] static extern int CreateDXGIFactory1(ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IDXGIFactory1 f);
+    public static GpuInfo[] List() {
+        var res = new System.Collections.Generic.List<GpuInfo>();
+        var iid = typeof(IDXGIFactory1).GUID; IDXGIFactory1 f;
+        if (CreateDXGIFactory1(ref iid, out f) != 0) return res.ToArray();
+        IDXGIAdapter1 ad;
+        for (uint n = 0; f.EnumAdapters1(n, out ad) == 0; n++) {
+            AdapterDesc d; ad.GetDesc1(out d);
+            // Real GPUs only: no software renderer (flag 2), no virtual display drivers.
+            if ((d.Flags & 2) != 0 || (d.Vendor != 0x10DE && d.Vendor != 0x8086 && d.Vendor != 0x1002)) continue;
+            res.Add(new GpuInfo { Name = d.Name.Trim(), Luid = String.Format("luid_0x{0:x8}_0x{1:x8}", d.LuidHigh, d.LuidLow) });
+        }
+        return res.ToArray();
+    }
+}
+public static class PcStats {
+    [DllImport("kernel32.dll")] static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+    [DllImport("kernel32.dll")] public static extern ulong GetTickCount64();
+    [StructLayout(LayoutKind.Sequential)] struct Mem { public uint len, load; public ulong total, avail, tp, ta, tv, av, ae; }
+    [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx(ref Mem m);
+    static long pIdle, pBusy; static DateTime pAt = DateTime.MinValue;
+    // CPU use since the previous request; a fresh 250 ms sample when the panel was not polling.
+    public static int Cpu() {
+        long i, k, u;
+        if ((DateTime.UtcNow - pAt).TotalSeconds > 10) { GetSystemTimes(out i, out k, out u); pIdle = i; pBusy = k + u; System.Threading.Thread.Sleep(250); }
+        GetSystemTimes(out i, out k, out u);
+        long di = i - pIdle, dt = k + u - pBusy; pIdle = i; pBusy = k + u; pAt = DateTime.UtcNow;
+        return dt <= 0 ? 0 : (int)Math.Round(100.0 * (dt - di) / dt);
+    }
+    public static ulong[] Ram() { var m = new Mem(); m.len = (uint)Marshal.SizeOf(m); GlobalMemoryStatusEx(ref m); return new[] { m.total - m.avail, m.total }; }
 }
 public static class PcPower {
     [DllImport("powrprof.dll")] public static extern bool SetSuspendState(bool hibernate, bool force, bool wakeupEventsDisabled);
@@ -132,6 +198,62 @@ function NonSteamGames($steam) {
     }
 }
 
+# Active outputs, read from the registry (names as the Sound settings show them).
+# kind: the endpoint form factor (1 speakers, 3 headphones, 5 headset, 9 HDMI/DisplayPort...).
+function AudioDevices {
+    $root = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render'
+    $list = foreach ($k in Get-ChildItem $root -ErrorAction SilentlyContinue) {
+        if ((([int64](Get-ItemProperty $k.PSPath).DeviceState) -band 0xF) -ne 1) { continue }
+        $p = Get-ItemProperty (Join-Path $k.PSPath 'Properties') -ErrorAction SilentlyContinue
+        $iface = $p.'{b3f8fa53-0004-438e-9003-51a46e139bfc},6'
+        if ($iface -match 'Steam Streaming') { continue }  # Remote Play's virtual device
+        $name = $p.'{a45c254e-df1c-4efd-8020-67d146a850e0},2'
+        [pscustomobject]@{ id = "{0.0.0.00000000}.$($k.PSChildName)"; name = $(if ($iface) { "$name ($iface)" } else { $name }); kind = [int]$p.'{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},0' }
+    }
+    @{ default = [PcAudio]::DefaultId(); devices = @($list | Sort-Object name) }
+}
+
+$script:gameCache = @{}
+function RunningGame {
+    $id = [int64](Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).RunningAppID
+    if (-not $id) { return $null }
+    if (-not $script:gameCache.ContainsKey($id)) {
+        $script:gameCache[$id] = ((Games).games | Where-Object { $_.appid -eq $id } | Select-Object -First 1).name
+    }
+    $script:gameCache[$id]
+}
+# Each running GPU with its 3D engine use since the previous request (Windows' GPU Engine counters,
+# the numbers Task Manager shows), so it works for any vendor and follows the MUX switch.
+$script:gpuCat = $null; $script:gpuPrev = $null
+function Gpus {
+    if (-not $script:gpuCat) { $script:gpuCat = New-Object Diagnostics.PerformanceCounterCategory 'GPU Engine' }
+    $now = $script:gpuCat.ReadCategory()['Utilization Percentage']
+    $had = [bool]$script:gpuPrev; $use = @{}
+    if ($had) {
+        foreach ($n in $now.Keys) {
+            if ($n -notlike '*engtype_3D') { continue }
+            $old = $script:gpuPrev[$n]; if (-not $old) { continue }
+            $luid = ($n -split '_phys')[0] -replace '^pid_\d+_', ''
+            $use[$luid] += [Diagnostics.CounterSample]::Calculate($old.Sample, $now[$n].Sample)
+        }
+    }
+    $script:gpuPrev = $now
+    # Virtual displays (Parsec, Sunshine) show up as extra adapters of the GPU that drives them: one entry per name.
+    @([PcGpu]::List() | Group-Object Name | ForEach-Object {
+        $name = $_.Name -replace '\((R|TM)\)', '' -replace '\s+(Laptop )?GPU$', '' -replace '^(NVIDIA|Intel|AMD)\s+', '' -replace '^GeForce\s+|\s+Graphics$', '' -replace '\s+', ' '
+        $u = ($_.Group | ForEach-Object { [double]$use[$_.Luid] } | Measure-Object -Maximum).Maximum
+        @{ name = $name; use = $(if ($had) { [int][Math]::Min(100, [Math]::Round($u)) } else { $null }) }
+    })
+}
+# The CPU's model, short: "12th Gen Intel(R) Core(TM) i7-12700H" -> "i7-12700H", "AMD Ryzen 7 5800X 8-Core Processor" -> "Ryzen 7 5800X".
+$script:cpuName = ((Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' -ErrorAction SilentlyContinue).ProcessorNameString) -replace '\((R|TM)\)', '' -replace '^\d+th Gen\s+', '' -replace '^(Intel|AMD)\s+', '' -replace '^Core\s+(?=i\d)', '' -replace '\s+\d+-Core.*$|\s+(CPU|Processor).*$|\s+with Radeon.*$', '' -replace '\s+', ' '
+# Measured only when asked: the panel polls this while it is on screen.
+function Stats {
+    $ram = [PcStats]::Ram()
+    @{ cpu = [PcStats]::Cpu(); cpuName = $script:cpuName; ramUsed = $ram[0]; ramTotal = $ram[1]; gpus = @(Gpus)
+       uptime = [int64]([PcStats]::GetTickCount64() / 1000); game = (RunningGame) }
+}
+
 function Status {
     @{ host = $env:COMPUTERNAME; steam = (SteamRunning); volume = [PcAudio]::Get(); muted = [PcAudio]::Muted() }
 }
@@ -157,6 +279,16 @@ function Handle($method, $path, $query) {
             return Status
         }
         'POST /mute' { [PcAudio]::Mute(-not [PcAudio]::Muted()); return Status }
+        'GET /stats' { return Stats }
+        'GET /audio' { return AudioDevices }
+        'POST /audio/default' {
+            $id = [string]$query['id']
+            if (-not ((AudioDevices).devices | Where-Object { $_.id -eq $id })) { return @{ error = 'Unknown device' } }
+            [PcAudio]::SetDefault($id)
+            $r = AudioDevices
+            if ($r.default -ne $id) { $r.error = 'Windows kept the current output (it does not take this device as default)' }
+            return $r
+        }
     }
     return $null
 }

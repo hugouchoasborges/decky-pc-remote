@@ -5,6 +5,7 @@ import {
   DialogFooter,
   DialogHeader,
   Dropdown,
+  DropdownItem,
   Field,
   Focusable,
   ModalRoot,
@@ -16,13 +17,15 @@ import {
   ToggleField,
   showModal,
   staticClasses,
+  useQuickAccessVisible,
 } from "@decky/ui";
 import { callable, definePlugin, toaster } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { FaDesktop } from "react-icons/fa";
 import { FaSteam } from "react-icons/fa";
-import { FiEdit2, FiEyeOff, FiKey, FiLogOut, FiMonitor, FiMoon, FiPlay, FiPlus, FiPower, FiRotateCw, FiSettings, FiTrash2, FiVolume2, FiVolumeX, FiWifi } from "react-icons/fi";
-import { CardState, CollapsibleSection, GameRow, Notice, PanelStyles, Section, StatusCard, TileRow, WideTile } from "./ui";
+import { FiClock, FiEdit2, FiEyeOff, FiHeadphones, FiSpeaker, FiKey, FiLogOut, FiMonitor, FiMoon, FiPlay, FiPlus, FiPower, FiRotateCw, FiSettings, FiTrash2, FiVolume2, FiVolumeX, FiWifi } from "react-icons/fi";
+import { MdOutlineTv } from "react-icons/md";
+import { CardState, Meter, CollapsibleSection, GameRow, Notice, PanelStyles, Section, StatusCard, TileRow, WideTile } from "./ui";
 
 type Pc = { name: string; host: string; port: number; token: string; hidden?: number[] }; // hidden: app ids left off the panel
 type Config = { pcs: Pc[]; selected: number };
@@ -38,6 +41,20 @@ const setVolume = callable<[number], Status>("set_volume");
 type Game = { appid: number; name: string; lastPlayed: number; nonSteam?: boolean };
 type Games = { games: Game[]; running: number; error?: string };
 const getGames = callable<[], Games>("games");
+type Stats = { cpu?: number; cpuName?: string; ramUsed?: number; ramTotal?: number; gpus?: { name: string; use: number | null }[]; uptime?: number; game?: string | null; error?: string };
+const getStats = callable<[], Stats>("stats");
+type AudioDevice = { id: string; name: string; kind: number };
+type Audio = { default?: string; devices?: AudioDevice[]; error?: string };
+const getAudio = callable<[], Audio>("audio");
+const setAudio = callable<[string], Audio>("set_audio");
+
+const gb = (b: number) => (b / 1024 ** 3).toFixed(1);
+const since = (s: number) => {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+};
+// Endpoint form factor -> icon: 3 headphones, 5 headset, 9 HDMI / DisplayPort, else speakers.
+const outputIcon = (kind?: number) => kind === 3 || kind === 5 ? FiHeadphones : kind === 9 ? MdOutlineTv : FiSpeaker;
 
 // Opens the game's own page in the Deck's library, where Steam offers Stream / Play.
 const openGame = (appid: number) => { Navigation.CloseSideMenus(); Navigation.Navigate(`/library/app/${appid}`); };
@@ -122,11 +139,20 @@ function Content() {
     if (r.moved_to) setNotice(`The PC's IP changed: found again at ${r.moved_to}`);
   };
   const refresh = async () => apply(await getStatus());
+  const [stats, setStats] = useState<Stats>({});
+  const [audio, setAudioState] = useState<Audio>({});
+  const loadStats = async () => setStats(await getStats());
+  const loadAudio = async () => setAudioState(await getAudio());
+  // Everything live is fetched only while the panel is on screen: the PC measures on request.
+  const visible = useQuickAccessVisible();
+  useEffect(() => { getConfig().then(setConfig); }, []);
   useEffect(() => {
-    getConfig().then((c) => { setConfig(c); if (c.pcs.length) refresh(); });
+    if (!visible || !config.pcs.length) return;
+    refresh(); loadStats(); loadAudio();
     const t = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(t);
-  }, []);
+    const st = window.setInterval(loadStats, 2000);
+    return () => { window.clearInterval(t); window.clearInterval(st); };
+  }, [visible, config.selected, config.pcs.length]);
 
   const run = async (path: string, done: string) => {
     const r = await command(path);
@@ -155,7 +181,7 @@ function Content() {
     }
     Navigation.CloseSideMenus();
     showModal(<PcEditModal initial={index < 0 ? EMPTY : config.pcs[index]} games={list}
-      onSave={async (pc) => { setConfig(await savePc(index, pc)); setStatus({}); refresh(); }} />);
+      onSave={async (pc) => { setConfig(await savePc(index, pc)); setStatus({}); refresh(); loadStats(); loadAudio(); }} />);
   };
 
   const pc = config.pcs[config.selected];
@@ -186,7 +212,7 @@ function Content() {
             <Dropdown
               rgOptions={config.pcs.map((p, i) => ({ data: i, label: p.name }))}
               selectedOption={config.selected}
-              onChange={async (o) => { setConfig(await selectPc(o.data)); setStatus({}); setNotice(""); refresh(); }}
+              onChange={async (o) => { setConfig(await selectPc(o.data)); setStatus({}); setStats({}); setAudioState({}); setNotice(""); }}
             />
           </PanelSectionRow>
         )}
@@ -194,7 +220,14 @@ function Content() {
           [FiWifi, "Address", `${pc.host}:${pc.port || 47990}`],
           [FaSteam, "Steam", online ? (status.steam ? "Open" : "Closed") : "—"],
           [status.muted ? FiVolumeX : FiVolume2, "Volume", volumeText],
-        ]} />
+          ...(online && stats.game ? [[FiPlay, "Playing", stats.game] as [typeof FiPlay, string, string]] : []),
+          ...(online && stats.uptime != null ? [[FiClock, "On for", since(stats.uptime)] as [typeof FiClock, string, string]] : []),
+        ]} meters={online && stats.cpu != null ? [
+          { label: stats.cpuName || "CPU", text: `${stats.cpu}%`, pct: stats.cpu },
+          { label: "RAM", text: `${gb(stats.ramUsed!)}/${gb(stats.ramTotal!)} GB`, pct: (100 * stats.ramUsed!) / stats.ramTotal! },
+          // One meter per GPU Windows has running: the dedicated one disappears when the MUX turns it off.
+          ...(stats.gpus ?? []).map((g) => ({ label: g.name, text: g.use == null ? "…" : `${g.use}%`, pct: g.use })),
+        ] as Meter[] : undefined} />
         {badToken && <Notice kind="error">The PC refused the token. Check the token install.ps1 showed.</Notice>}
         {badToken && <WideTile icon={FiKey} label="Fix token" t="danger" onClick={() => edit(config.selected)} />}
         {state === "offline" && !badToken && (
@@ -237,6 +270,24 @@ function Content() {
         </PanelSectionRow>
         <WideTile icon={status.muted ? FiVolume2 : FiVolumeX} label={status.muted ? "Unmute" : "Mute"} t="sound" disabled={!online}
           onClick={async () => apply(await command("/mute"))} />
+        {online && audio.devices && audio.devices.length > 0 && (() => {
+          const cur = audio.devices.find((d) => d.id === audio.default);
+          const OutIcon = outputIcon(cur?.kind);
+          return (
+            <PanelSectionRow>
+              <DropdownItem layout="below" childrenContainerWidth="max" label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><OutIcon /> Output</span>}
+                description={audio.devices.length === 1 ? "The only output Windows has active right now" : undefined}
+                rgOptions={audio.devices.map((d) => ({ data: d.id, label: d.name }))}
+                selectedOption={audio.default}
+                onChange={async (o) => {
+                  const r = await setAudio(o.data);
+                  if (r.error) toaster.toast({ title: "PC Remote", body: r.error });
+                  if (r.devices) setAudioState(r);
+                  refresh();
+                }} />
+            </PanelSectionRow>
+          );
+        })()}
       </Section>
 
       <Section title="Screen" icon={FiMonitor} t="screen">
