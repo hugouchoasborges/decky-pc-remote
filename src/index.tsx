@@ -34,7 +34,7 @@ const selectPc = callable<[number], Config>("select_pc");
 const getStatus = callable<[], Status>("status");
 const command = callable<[string], Status & { ok?: boolean }>("command");
 const setVolume = callable<[number], Status>("set_volume");
-type Game = { appid: number; name: string; lastPlayed: number };
+type Game = { appid: number; name: string; lastPlayed: number; nonSteam?: boolean };
 type Games = { games: Game[]; running: number; error?: string };
 const getGames = callable<[], Games>("games");
 
@@ -194,7 +194,11 @@ function Content() {
           </>
         )}
         {games?.games.map((g) => (
-          <GameRow key={g.appid} appid={g.appid} name={g.name} playing={g.appid === games.running} onClick={() => openGame(g.appid)} />
+          <GameRow key={g.appid} appid={g.appid} name={g.name} nonSteam={g.nonSteam} playing={g.appid === games.running}
+            onClick={() => g.nonSteam && !status.steam
+              // The Deck only knows the PC's non-Steam games while Steam runs there.
+              ? toaster.toast({ title: "PC Remote", body: "Open Steam on the PC first: non-Steam games show up on the Deck only while it runs." })
+              : openGame(g.appid)} />
         ))}
       </CollapsibleSection>
 

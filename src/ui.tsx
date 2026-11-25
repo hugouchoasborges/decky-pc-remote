@@ -188,15 +188,22 @@ export function CollapsibleSection({ id, title, icon, t, summary, initiallyColla
 // ---------------------------------------------------------------- games
 
 /** One installed game: its library capsule, its name, and a "Playing" badge while it runs. */
-export function GameRow({ appid, name, playing, onClick }: { appid: number; name: string; playing: boolean; onClick: () => void }) {
-  const [img, setImg] = useState(true);
+export function GameRow({ appid, name, playing, nonSteam, onClick }: { appid: number; name: string; playing: boolean; nonSteam?: boolean; onClick: () => void }) {
+  // Non-Steam shortcuts have no store capsule: a lettered tile stands in.
+  const [img, setImg] = useState(!nonSteam);
   return (
     <PanelSectionRow>
       <DialogButton className="pcr-game" onClick={onClick}>
         {img
           ? <img src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/capsule_184x69.jpg`} alt="" onError={() => setImg(false)} />
-          : <span style={{ width: 64, height: 30, flex: "0 0 64px", borderRadius: 3, background: "#1b2838" }} />}
+          : <span style={{ width: 64, height: 30, flex: "0 0 64px", borderRadius: 3, display: "grid", placeItems: "center",
+              background: alpha(tone.neutral, 0.22), color: ink, fontWeight: 800, fontSize: 15 }}>{name.trim().charAt(0).toUpperCase()}</span>}
         <span className="pcr-name">{name}</span>
+        {nonSteam && !playing && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: inkMuted, padding: "2px 5px", borderRadius: 4, background: alpha(tone.neutral, 0.18) }}>
+            Non-Steam
+          </span>
+        )}
         {playing && (
           <span style={{ fontSize: 11, fontWeight: 700, color: tone.ok, padding: "2px 6px", borderRadius: 4, background: alpha(tone.ok, 0.16) }}>
             Playing

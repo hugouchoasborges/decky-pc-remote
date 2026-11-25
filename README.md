@@ -15,7 +15,7 @@ turn the screen off or put the PC to sleep without walking to the desk.
 | Section | Controls |
 |---|---|
 | **Status** | Online / Offline / Connecting at a glance, with the PC's address, whether Steam is open, and the volume |
-| **Games on the PC** | The Steam games installed on the PC, last played first, with a *Playing* badge on the running one. Collapsed by default; pressing a game opens its page in the Deck's library, where Steam offers **Stream** |
+| **Games on the PC** | The Steam games installed on the PC and its non-Steam shortcuts (emulators, launchers), last played first, with a *Playing* badge on the running one. Collapsed by default; pressing a game opens its page in the Deck's library, where Steam offers **Stream** |
 | **Steam** | Open Steam, or close it when it is running |
 | **Volume** | A slider for the PC's speakers and a Mute / Unmute button |
 | **Screen** | Turn the PC's screen off (moving the mouse or a key wakes it) |
@@ -26,6 +26,10 @@ turn the screen off or put the PC to sleep without walking to the desk.
   remembers whether you keep it open.
 - The games list is read from the PC's Steam library files, so it works with Steam closed;
   when Steam is closed the list offers to open it, since streaming needs it running.
+- Non-Steam games come from the PC's `shortcuts.vdf`; the Deck knows them (same app id) only
+  while Steam runs on the PC, so they open once Steam is up there.
+- On a game the Deck could also install, Steam's main button reads **Install**: the arrow next
+  to it offers **Stream** from the PC.
 - Every action has an icon and a colour family: blue for Steam, teal for sound, violet for
   the screen, amber for sleep and restart, red for shut down.
 - Buttons show a spinner while their command runs; failures appear as a toast.
@@ -84,7 +88,7 @@ Every HTTP request needs the header `X-Token: <token>`.
 | Request | Effect |
 |---|---|
 | `GET /status` | `{"host","steam","volume","muted"}` |
-| `GET /games` | `{"running","games":[{"appid","name","lastPlayed"}]}`: fully installed Steam games, tools and runtimes left out |
+| `GET /games` | `{"running","games":[{"appid","name","lastPlayed","nonSteam"}]}`: fully installed Steam games (tools and runtimes left out) and visible non-Steam shortcuts |
 | `POST /steam/open`, `POST /steam/close` | Opens Steam, or closes it with `steam.exe -shutdown` |
 | `POST /screen/off` | Turns the displays off |
 | `POST /power/suspend`, `/power/restart`, `/power/shutdown` | Power actions, 1.5 s after the reply |

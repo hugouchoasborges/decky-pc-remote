@@ -3,7 +3,7 @@
 # on the desktop and change the speaker volume. Every request needs the X-Token header.
 #
 #   GET  /status                 -> {"host","steam","volume","muted"}
-#   GET  /games                  -> {"running", "games":[{"appid","name","lastPlayed"}]}
+#   GET  /games                  -> {"running", "games":[{"appid","name","lastPlayed","nonSteam"?}]}
 #   POST /steam/open | /steam/close
 #   POST /screen/off             -> turns the displays off only
 #   POST /power/suspend | /power/shutdown | /power/restart
@@ -84,8 +84,52 @@ function Games {
             [pscustomobject]@{ appid = $id; name = $name; lastPlayed = [int64](& $get 'LastPlayed') }
         }
     }
+    $games = @($games) + @(NonSteamGames $steam)
     $running = (Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).RunningAppID
-    @{ running = [int]$running; games = @($games | Sort-Object @{ e = 'lastPlayed'; Descending = $true }, name) }
+    @{ running = [int64]$running; games = @($games | Sort-Object @{ e = 'lastPlayed'; Descending = $true }, name) }
+}
+
+# Non-Steam games: the shortcuts in userdata\<user>\config\shortcuts.vdf (binary VDF:
+# 0x00 map, 0x01 string, 0x02 int32, 0x07 int64, 0x08 end of map). Their appid is the one the
+# Deck's library uses for them while Steam runs on the PC. Hidden shortcuts are left out.
+function NonSteamGames($steam) {
+    $seen = @{}
+    foreach ($file in Get-ChildItem (Join-Path $steam 'userdata\*\config\shortcuts.vdf') -ErrorAction SilentlyContinue) {
+        $b = [IO.File]::ReadAllBytes($file.FullName)
+        $i = 0; $depth = 0; $cur = $null
+        while ($i -lt $b.Length) {
+            $type = $b[$i]; $i++
+            if ($type -eq 8) {
+                $depth--
+                if ($depth -eq 1 -and $cur) {
+                    if ($cur.appid -and $cur.name -and -not $cur.hidden -and -not $seen[$cur.appid]) {
+                        $seen[$cur.appid] = $true
+                        [pscustomobject]@{ appid = $cur.appid; name = $cur.name; lastPlayed = $cur.lastPlayed; nonSteam = $true }
+                    }
+                    $cur = $null
+                }
+                continue
+            }
+            $s = $i; while ($i -lt $b.Length -and $b[$i] -ne 0) { $i++ }
+            $key = [Text.Encoding]::UTF8.GetString($b, $s, $i - $s); $i++
+            if ($type -eq 0) { $depth++; if ($depth -eq 2) { $cur = @{ lastPlayed = [int64]0 } } }
+            elseif ($type -eq 1) {
+                $s = $i; while ($i -lt $b.Length -and $b[$i] -ne 0) { $i++ }
+                $val = [Text.Encoding]::UTF8.GetString($b, $s, $i - $s); $i++
+                if ($cur -and $key -ieq 'appname') { $cur.name = $val }
+            }
+            elseif ($type -eq 2) {
+                $u = [BitConverter]::ToUInt32($b, $i); $i += 4
+                if ($cur) {
+                    if ($key -ieq 'appid') { $cur.appid = [int64]$u }
+                    elseif ($key -ieq 'LastPlayTime') { $cur.lastPlayed = [int64]$u }
+                    elseif ($key -ieq 'IsHidden') { $cur.hidden = $u -ne 0 }
+                }
+            }
+            elseif ($type -eq 7) { $i += 8 }
+            else { break }
+        }
+    }
 }
 
 function Status {
